@@ -5,19 +5,13 @@ import react from '@vitejs/plugin-react';
 export default defineConfig({
   plugins: [react()],
   define: {
-    // Garante que o process.env.API_KEY esteja disponível no lado do cliente
+    // Injeta a API_KEY para ser acessível via process.env.API_KEY no código
     'process.env.API_KEY': JSON.stringify(process.env.API_KEY)
   },
   build: {
     outDir: 'dist',
     sourcemap: false,
-    minify: 'terser',
-    terserOptions: {
-      compress: {
-        drop_console: true,
-        drop_debugger: true
-      }
-    },
+    minify: 'esbuild', // Esbuild é nativo e resolve problemas de dependências externas como o terser
     rollupOptions: {
       output: {
         manualChunks: {
