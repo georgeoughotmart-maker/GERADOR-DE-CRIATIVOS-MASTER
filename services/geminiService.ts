@@ -8,40 +8,14 @@ const getImageData = (dataUrl: string) => {
 };
 
 const getPromptForStyle = (style: AdStyle): string => {
-  switch (style) {
-    case AdStyle.CYBERPUNK:
-      return "Create a high-impact cyberpunk advertising creative. Surround the product with neon lights, holographic glitches, and a futuristic night city background. Colors: Neon Pink, Cyan, Deep Purple.";
-    case AdStyle.LUXURY:
-      return "Create an ultra-luxurious, premium advertising creative. Place the product on white or black marble with gold accents and elegant spotlighting.";
-    case AdStyle.STEAMPUNK_BRASS:
-      return "Create a detailed Steampunk ad. Product surrounded by brass gears, copper pipes, Victorian industrial textures, and warm gaslight illumination.";
-    case AdStyle.ABSTRACT_PAPER:
-      return "Create a clean Paper Cutout style ad. Minimalist layers of high-quality craft paper with soft shadows, focus on shapes and textures.";
-    case AdStyle.ABYSSAL_DEEP:
-      return "Create a mysterious Deep Sea Abyssal ad. Bioluminescent floating organisms, deep navy blue water, caustic light effects, and bubbles.";
-    case AdStyle.COSMIC_NEBULA:
-      return "Create a majestic Cosmic Nebula ad. Swirling galaxy clouds in purple and gold, distant stars, and a vast, dreamy space atmosphere.";
-    case AdStyle.HYPER_MINIMAL:
-      return "Create a Hyper Minimalist commercial photo. Pure monochromatic background with sharp, elegant shadows that define the product's silhouette.";
-    case AdStyle.SYNTHWAVE_SUN:
-      return "Create a classic Synthwave ad. Retrowave sun grid, pink and orange sunset sky, VHS scanline textures, and a cool 80s electronic vibe.";
-    case AdStyle.VAPORWAVE_DREAM:
-      return "Create a nostalgic Vaporwave advertising creative. Use pastel pinks, purples, and blues, 80s aesthetics, low-poly grids, and stylized palm trees.";
-    case AdStyle.GOLDEN_LIQUID:
-      return "Create a majestic liquid gold luxury ad. The product should be surrounded by swirling molten gold, highly reflective surfaces, and expensive lighting.";
-    case AdStyle.URBAN_GRAFFITI:
-      return "Create a high-energy street graffiti ad. Vibrant spray paint drips, urban wall textures, colorful neon tags, and a modern street fashion vibe.";
-    case AdStyle.MAGMA_CORE:
-      return "Create an intense volcanic magma ad. Glowing lava, deep red embers, dark basalt rocks, and extreme lighting contrast with fire sparks.";
-    case AdStyle.GLACIER_FROST:
-      return "Create a freezing glacier frost ad. Translucent ice crystals, blue frozen textures, mist, and sharp, cold highlights on the product.";
-    case AdStyle.BIO_LUMINESCENT:
-      return "Create a magical bioluminescent jungle ad. Glowing exotic plants, mysterious purple and green light veins, and a lush, dreamlike dark forest atmosphere.";
-    case AdStyle.EXPLOSIVE:
-      return "Create an explosive, high-energy advertising creative. The product should look like it is landing with impact, causing colorful debris and energy sparks to fly.";
-    default:
-      return "Create a high-impact advertising creative. Dramatic lighting, professional product photography style, vibrant colors.";
-  }
+  const styles: Record<string, string> = {
+    [AdStyle.CYBERPUNK]: "High-impact cyberpunk advertising. Neon lights, holographic glitches, futuristic night city.",
+    [AdStyle.LUXURY]: "Ultra-luxurious premium ad. White or black marble, gold accents, elegant spotlights.",
+    [AdStyle.EXPLOSIVE]: "Explosive energy ad. Product landing with impact, debris, energy sparks.",
+    [AdStyle.VAPORWAVE_DREAM]: "Nostalgic vaporwave. Pastel pinks/blues, 80s aesthetics, palm trees, low-poly grids.",
+    [AdStyle.GOLDEN_LIQUID]: "Majestic liquid gold luxury. Swirling molten gold, highly reflective surfaces."
+  };
+  return styles[style] || "Professional high-impact commercial photography, vibrant colors, dramatic lighting.";
 };
 
 export const generateAdCreative = async (
@@ -52,79 +26,51 @@ export const generateAdCreative = async (
   logoPosition: LogoPosition = LogoPosition.TOP_RIGHT,
   params?: AdParameters
 ): Promise<string> => {
-  try {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    const model = 'gemini-2.5-flash-image';
-    const basePrompt = getPromptForStyle(style);
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const modelName = 'gemini-2.5-flash-image';
+  const basePrompt = getPromptForStyle(style);
+  
+  const textOverlayDirective = params?.overlayText 
+    ? `IMPORTANT: Elegantly render the text "${params.overlayText}" in the composition.` 
+    : "";
+
+  const prompt = `
+    Professional commercial photographer and digital artist task.
+    Style Instruction: ${basePrompt}
+    ${textOverlayDirective}
+    ${customInstructions ? `Additional Context: ${customInstructions}` : ''}
     
-    const lightingStyle = "high-contrast vibrant professional lighting";
-    const complexityStyle = "intricate and detailed environment with rich cinematic textures";
-    const colorDNA = "Use vibrant, high-end commercial colors matching the style.";
+    REQUIREMENTS:
+    1. Use FIRST image as HERO PRODUCT.
+    ${logoBase64 ? `2. Use SECOND image as LOGO in ${logoPosition}.` : ''}
+    3. Output 4K commercial quality.
+  `;
 
-    const textOverlayDirective = params && params.overlayText 
-      ? `CRITICAL: Render the text "${params.overlayText}" elegantly and prominently in the composition. The typography must be legible, stylish, and integrated into the artistic style of the ad.` 
-      : "";
+  const productInfo = getImageData(productBase64);
+  const parts: any[] = [{ inlineData: { mimeType: productInfo.mimeType, data: productInfo.data } }];
 
-    let finalPrompt = `
-      Expert advertising art director task. Generate an IMAGE output.
-      Role: You are a professional commercial photographer and digital artist.
-      
-      Instructions: ${basePrompt}
-      Lighting: ${lightingStyle}
-      Background: ${complexityStyle}
-      Color Palette: ${colorDNA}
-      ${textOverlayDirective}
-
-      ${customInstructions ? `Additional Context: ${customInstructions}` : ''}
-      
-      IMAGE REQUIREMENTS:
-      1. Use the FIRST provided image as the HERO PRODUCT. Enhance it but keep its core identity.
-      2. Professional 4K commercial photography quality.
-      ${logoBase64 ? `3. BRAND LOGO: Use the SECOND provided image as the brand logo. Place it clearly in the ${logoPosition} corner of the final ad.` : ''}
-      4. Ensure the output is a single high-quality image, vibrant and ultra-appealing.
-    `;
-
-    const productInfo = getImageData(productBase64);
-    const parts: any[] = [
-      { inlineData: { mimeType: productInfo.mimeType, data: productInfo.data } }
-    ];
-
-    if (logoBase64) {
-      const logoInfo = getImageData(logoBase64);
-      parts.push({ inlineData: { mimeType: logoInfo.mimeType, data: logoInfo.data } });
-    }
-
-    parts.push({ text: finalPrompt });
-
-    const response = await ai.models.generateContent({
-      model: model,
-      contents: { parts: parts }
-    });
-
-    const candidate = response.candidates?.[0];
-    if (!candidate || !candidate.content?.parts) {
-       throw new Error("O modelo não retornou conteúdo. Isso pode ser devido a filtros de segurança.");
-    }
-
-    let textFeedback = "";
-    for (const part of candidate.content.parts) {
-      if (part.inlineData?.data) {
-        return `data:${part.inlineData.mimeType || 'image/jpeg'};base64,${part.inlineData.data}`;
-      }
-      if (part.text) {
-        textFeedback += part.text;
-      }
-    }
-
-    if (textFeedback) {
-      throw new Error(`O modelo retornou apenas texto: ${textFeedback.substring(0, 100)}...`);
-    }
-
-    throw new Error("Nenhum dado de imagem foi gerado pelo modelo.");
-  } catch (error: any) {
-    console.error("Erro na geração do criativo:", error);
-    throw error;
+  if (logoBase64) {
+    const logoInfo = getImageData(logoBase64);
+    parts.push({ inlineData: { mimeType: logoInfo.mimeType, data: logoInfo.data } });
   }
+
+  parts.push({ text: prompt });
+
+  const response = await ai.models.generateContent({
+    model: modelName,
+    contents: { parts: parts }
+  });
+
+  const candidate = response.candidates?.[0];
+  if (!candidate?.content?.parts) throw new Error("Falha na síntese: Sem resposta da IA.");
+
+  for (const part of candidate.content.parts) {
+    if (part.inlineData?.data) {
+      return `data:${part.inlineData.mimeType || 'image/png'};base64,${part.inlineData.data}`;
+    }
+  }
+
+  throw new Error("Nenhuma imagem gerada.");
 };
 
 export const generateAdCopy = async (
@@ -132,45 +78,39 @@ export const generateAdCopy = async (
   style: AdStyle,
   customInstructions?: string
 ): Promise<AdCopy> => {
-  try {
-    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-    const model = 'gemini-3-flash-preview';
-    const prompt = `
-      Estrategista de marcas de luxo. Crie headlines e descrições persuasivas para este anúncio no estilo "${style}".
-      Evite clichês óbvios. Foque em transformação, desejo e status.
-      GERE EXATAMENTE: 5 Títulos e 5 Descrições em JSON.
-      Idioma: Português (Brasil).
-    `;
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  const modelName = 'gemini-3-flash-preview';
+  
+  const prompt = `Estrategista de marcas. Crie 5 headlines e 5 descrições persuasivas em JSON para este anúncio "${style}". Idioma: Português.`;
+  const imgInfo = getImageData(imageBase64);
 
-    const imgInfo = getImageData(imageBase64);
-    const response = await ai.models.generateContent({
-      model: model,
-      contents: {
-        parts: [
-          { inlineData: { mimeType: imgInfo.mimeType, data: imgInfo.data } },
-          { text: prompt }
-        ]
-      },
-      config: {
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: Type.OBJECT,
-          properties: {
-            titles: { type: Type.ARRAY, items: { type: Type.STRING } },
-            descriptions: { type: Type.ARRAY, items: { type: Type.STRING } }
-          },
-          required: ["titles", "descriptions"]
-        }
+  const response = await ai.models.generateContent({
+    model: modelName,
+    contents: {
+      parts: [
+        { inlineData: { mimeType: imgInfo.mimeType, data: imgInfo.data } },
+        { text: prompt }
+      ]
+    },
+    config: {
+      responseMimeType: "application/json",
+      responseSchema: {
+        type: Type.OBJECT,
+        properties: {
+          titles: { type: Type.ARRAY, items: { type: Type.STRING } },
+          descriptions: { type: Type.ARRAY, items: { type: Type.STRING } }
+        },
+        required: ["titles", "descriptions"]
       }
-    });
+    }
+  });
 
-    const rawData = JSON.parse(response.text || '{}');
-    return {
-      titles: Array.isArray(rawData.titles) && rawData.titles.length > 0 ? rawData.titles : ["Elegância Definida", "O Futuro da Forma"],
-      descriptions: Array.isArray(rawData.descriptions) && rawData.descriptions.length > 0 ? rawData.descriptions : ["Descubra o extraordinário.", "Sinta a perfeição em cada detalhe."]
+  try {
+    return JSON.parse(response.text);
+  } catch {
+    return { 
+      titles: ["O Próximo Nível", "Design de Elite"], 
+      descriptions: ["Experiência incomparável.", "Transforme sua realidade hoje."] 
     };
-  } catch (error) {
-    console.warn("Erro ao gerar copy:", error);
-    return { titles: ["Elegância Definida", "Perfeição em Forma"], descriptions: ["Descubra o extraordinário.", "Sinta a perfeição em cada detalhe."] };
   }
 };
