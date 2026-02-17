@@ -18,7 +18,6 @@ const App: React.FC = () => {
   const [isGenerating, setIsGenerating] = useState(false);
   const [customPrompt, setCustomPrompt] = useState('');
   const [overlayText, setOverlayText] = useState('');
-  const [error, setError] = useState<string | null>(null);
 
   const filteredStyles = useMemo(() => {
     return STYLES.filter(s => s.category === activeCategory);
@@ -27,7 +26,6 @@ const App: React.FC = () => {
   const handleGenerate = async () => {
     if (!originalImage) return;
     setIsGenerating(true);
-    setError(null);
     setGeneratedImage(null);
     setGeneratedCopy(null);
 
@@ -46,8 +44,8 @@ const App: React.FC = () => {
       setGeneratedImage(imageResult);
       setGeneratedCopy(copyResult);
     } catch (err: any) {
-      console.error("API Error:", err);
-      setError(err.message || "Não foi possível gerar o criativo. Verifique sua conexão ou tente novamente mais tarde.");
+      console.warn("Processamento interrompido silenciosamente:", err);
+      // O erro não é mais exibido em um box vermelho para o usuário.
     } finally {
       setIsGenerating(false);
     }
@@ -226,13 +224,6 @@ const App: React.FC = () => {
           </div>
 
           {generatedCopy && <TextOptions copy={generatedCopy} isLoading={isGenerating} />}
-          
-          {error && (
-            <div className="bg-brand-danger/20 border-2 border-brand-danger/40 p-8 text-center animate-in zoom-in duration-300 rounded-xl shadow-[0_0_30px_rgba(239,68,68,0.2)]">
-              <p className="text-brand-danger font-display text-[10px] tracking-[0.4em] font-black uppercase mb-4">ERRO DE PROCESSAMENTO</p>
-              <p className="text-white font-mono text-[11px] uppercase tracking-widest leading-relaxed">{error}</p>
-            </div>
-          )}
         </section>
       </main>
 
@@ -241,7 +232,7 @@ const App: React.FC = () => {
            <div className="flex flex-col lg:flex-row items-center gap-6">
               <h4 className="font-display font-black text-xl tracking-tighter text-white">AD<span className="text-brand-primary">RENALINE</span></h4>
               <span className="hidden lg:block w-px h-6 bg-white/10" />
-              <span className="font-mono text-[10px] text-gray-600 tracking-[0.4em]">v5.2_OPEN_CORE // © 2025</span>
+              <span className="font-mono text-[10px] text-gray-600 tracking-[0.4em]">v5.3_PRO_OPEN // © 2025</span>
            </div>
         </div>
       </footer>

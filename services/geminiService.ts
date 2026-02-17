@@ -9,26 +9,24 @@ const getImageData = (dataUrl: string) => {
 
 const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-const withRetry = async <T>(fn: () => Promise<T>, retries = 3, delay = 3000): Promise<T> => {
+const withRetry = async <T>(fn: () => Promise<T>, retries = 3, delay = 2000): Promise<T> => {
   try {
     return await fn();
   } catch (error: any) {
     const errorMsg = error?.message?.toLowerCase() || "";
-    const errorStatus = error?.status;
     const isQuotaError = errorMsg.includes('429') || 
                         errorMsg.includes('resource_exhausted') || 
                         errorMsg.includes('quota') ||
-                        errorMsg.includes('limit') ||
-                        errorStatus === 429;
+                        errorMsg.includes('limit');
 
     if (isQuotaError && retries > 0) {
-      console.warn(`[API] Cota excedida. Tentando novamente em ${delay}ms... (Tentativas restantes: ${retries})`);
       await wait(delay);
       return withRetry(fn, retries - 1, delay * 2);
     }
     
+    // Removida a mensagem longa sobre Google/Cota/Faturamento
     if (isQuotaError) {
-      throw new Error("LIMITE DE COTA: O Google limitou as requisições gratuitas para este modelo de imagem no momento. Por favor, aguarde cerca de 1 minuto ou utilize uma chave de projeto com faturamento ativo.");
+      throw new Error("SISTEMA OCUPADO: Alta demanda no processador. Tente novamente em alguns instantes.");
     }
     
     throw error;
@@ -67,16 +65,16 @@ export const generateAdCreative = async (
     }
 
     const stylePrompt = getPromptForStyle(style);
-    const overlayTextPrompt = params?.overlayText ? `IMPORTANT: High-end artistic typography for the text "${params.overlayText}".` : "";
+    const overlayTextPrompt = params?.overlayText ? `IMPORTANT: Render the text "${params.overlayText}" into the scene with high-end typography.` : "";
     
     const finalPrompt = `
       TASK: Create an ultra-premium advertising creative masterpiece.
       STYLE: ${stylePrompt}
       ${overlayTextPrompt}
       ADDITIONAL INFO: ${customInstructions || ""}
-      COMPOSITION: Hero Product is the centerpiece. Background, lighting, and atmospherics must be completely reimagined according to style.
+      COMPOSITION: Hero Product is the centerpiece. Background, lighting, and atmospherics completely reimagined.
       ${logoBase64 ? `BRANDING: Place logo at ${logoPosition}.` : ""}
-      QUALITY: Masterpiece, 4K, Commercial Grade.
+      QUALITY: 4K, Masterpiece, Commercial Grade.
     `;
 
     parts.push({ text: finalPrompt });
@@ -95,7 +93,7 @@ export const generateAdCreative = async (
       }
     }
 
-    throw new Error("Falha ao sintetizar a imagem. Tente outro estilo.");
+    throw new Error("Erro na síntese da imagem.");
   });
 };
 
@@ -135,7 +133,7 @@ export const generateAdCopy = async (
     try {
       return JSON.parse(response.text || '{"titles":[], "descriptions":[]}');
     } catch {
-      return { titles: ["Inovação Pura", "Design de Elite"], descriptions: ["Transforme sua presença digital.", "Qualidade incomparável."] };
+      return { titles: ["Inovação Pura"], descriptions: ["O futuro chegou."] };
     }
   });
 };
