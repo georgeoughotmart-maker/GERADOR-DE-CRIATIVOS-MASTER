@@ -9,18 +9,23 @@ const getImageData = (dataUrl: string) => {
 
 const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-const withRetry = async <T>(fn: () => Promise<T>, retries = 3, delay = 2000): Promise<T> => {
+const withRetry = async <T>(fn: () => Promise<T>, retries = 2, delay = 3000): Promise<T> => {
   try {
     return await fn();
   } catch (error: any) {
-    const isRateLimit = error?.message?.includes('429') || error?.status === 429;
-    const isQuotaExceeded = error?.message?.includes('RESOURCE_EXHAUSTED');
+    const errorStr = JSON.stringify(error).toUpperCase();
+    const isRateLimit = errorStr.includes('429') || errorStr.includes('RESOURCE_EXHAUSTED');
     
-    if ((isRateLimit || isQuotaExceeded) && retries > 0) {
-      console.warn(`Cota atingida. Tentando novamente em ${delay}ms... (Tentativas restantes: ${retries})`);
+    if (isRateLimit && retries > 0) {
+      console.warn(`Cota atingida. Tentando novamente em ${delay}ms...`);
       await wait(delay);
       return withRetry(fn, retries - 1, delay * 2);
     }
+    
+    if (isRateLimit) {
+      throw new Error("COTA_EXCEDIDA: O modelo de imagem atingiu o limite da chave gratuita. Por favor, clique em 'CONFIGURAR CHAVE' e use sua própria API Key paga para gerar sem restrições.");
+    }
+    
     throw error;
   }
 };
@@ -45,6 +50,7 @@ export const generateAdCreative = async (
   params?: AdParameters
 ): Promise<string> => {
   return withRetry(async () => {
+    // Inicializa uma nova instância para garantir que usa a chave mais recente selecionada no dialog
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const modelName = 'gemini-2.5-flash-image';
     const basePrompt = getPromptForStyle(style);
@@ -89,7 +95,7 @@ export const generateAdCreative = async (
       }
     }
 
-    throw new Error("Nenhuma imagem gerada.");
+    throw new Error("A IA não retornou uma imagem. Tente um estilo diferente.");
   });
 };
 
@@ -102,7 +108,7 @@ export const generateAdCopy = async (
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const modelName = 'gemini-3-flash-preview';
     
-    const prompt = `Estrategista de marcas. Crie 5 headlines e 5 descrições persuasivas em JSON para este anúncio "${style}". Idioma: Português.`;
+    const prompt = `Estrategista de marcas. Crie 5 headlines e 5 descrições persuasivas em JSON para este anúncio de estilo "${style}". Retorne apenas o JSON. Idioma: Português.`;
     const imgInfo = getImageData(imageBase64);
 
     const response = await ai.models.generateContent({
