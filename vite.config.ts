@@ -5,8 +5,18 @@ import react from '@vitejs/plugin-react';
 export default defineConfig({
   plugins: [react()],
   define: {
-    // Defines process.env.API_KEY to read from the standard Vite env variable
-    // In Netlify, you must set the Environment Variable as VITE_API_KEY
-    'process.env.API_KEY': 'import.meta.env.VITE_API_KEY'
+    // Injeta a API_KEY definida no painel da Vercel para ser acessível via process.env.API_KEY
+    'process.env.API_KEY': JSON.stringify(process.env.API_KEY)
+  },
+  build: {
+    outDir: 'dist',
+    sourcemap: false,
+    minify: 'terser',
+    terserOptions: {
+      compress: {
+        drop_console: true,
+        drop_debugger: true
+      }
+    }
   }
 });
