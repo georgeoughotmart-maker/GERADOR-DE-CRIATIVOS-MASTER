@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import { STYLES, SparklesIcon, DownloadIcon, RefreshIcon } from './constants';
 import { AdStyle, AdCopy, Category, LogoPosition, AdParameters } from './types';
 import Button from './components/Button';
@@ -19,31 +19,6 @@ const App: React.FC = () => {
   const [customPrompt, setCustomPrompt] = useState('');
   const [overlayText, setOverlayText] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const [hasApiKey, setHasApiKey] = useState(false);
-
-  useEffect(() => {
-    const checkKey = async () => {
-      if (window.aistudio?.hasSelectedApiKey) {
-        const hasKey = await window.aistudio.hasSelectedApiKey();
-        setHasApiKey(hasKey);
-      }
-    };
-    checkKey();
-  }, []);
-
-  const handleOpenKeySelector = async () => {
-    if (window.aistudio?.openSelectKey) {
-      setError(null);
-      await window.aistudio.openSelectKey();
-      // Verificamos novamente após o fechamento do diálogo
-      if (window.aistudio?.hasSelectedApiKey) {
-        const hasKey = await window.aistudio.hasSelectedApiKey();
-        setHasApiKey(hasKey);
-      } else {
-        setHasApiKey(true); // Assume sucesso para desbloquear a UI
-      }
-    }
-  };
 
   const filteredStyles = useMemo(() => {
     return STYLES.filter(s => s.category === activeCategory);
@@ -71,14 +46,8 @@ const App: React.FC = () => {
       setGeneratedImage(imageResult);
       setGeneratedCopy(copyResult);
     } catch (err: any) {
-      console.error("API Error Trace:", err);
-      const errStr = JSON.stringify(err).toLowerCase();
-      
-      if (errStr.includes('429') || errStr.includes('resource_exhausted') || errStr.includes('limit: 0')) {
-        setError("COTA ZERO DETECTADA: A chave atual não tem permissão para gerar imagens (Free Tier Limit 0). Para resolver, clique no botão 'TROCAR CHAVE' e escolha uma chave de um projeto com faturamento ativo (Paid Project).");
-      } else {
-        setError(err.message || "ERRO CRÍTICO: O sistema não conseguiu processar a solicitação.");
-      }
+      console.error("API Error:", err);
+      setError(err.message || "Não foi possível gerar o criativo. Verifique sua conexão ou tente novamente mais tarde.");
     } finally {
       setIsGenerating(false);
     }
@@ -101,7 +70,7 @@ const App: React.FC = () => {
             <h1 className="font-display font-black text-2xl lg:text-3xl tracking-[0.2em] leading-none">
               AD<span className="gradient-text-neon">RENALINE</span>
             </h1>
-            <span className="text-[8px] lg:text-[9px] font-mono tracking-[0.4em] text-gray-400 mt-2 uppercase font-bold">Gerador de Criativos de Elite</span>
+            <span className="text-[8px] lg:text-[9px] font-mono tracking-[0.4em] text-gray-400 mt-2 uppercase font-bold">Estúdio Criativo de Elite</span>
           </div>
           
           <nav className="flex items-center gap-1.5 p-1 bg-white/5 rounded-full border border-white/10 overflow-x-auto no-scrollbar max-w-full lg:max-w-none px-2 lg:px-1.5">
@@ -121,19 +90,11 @@ const App: React.FC = () => {
           </nav>
         </div>
 
-        <div className="flex items-center gap-4 lg:gap-8">
-          <button 
-            onClick={handleOpenKeySelector}
-            className={`flex items-center gap-3 px-6 py-2 rounded-full border-2 font-display text-[9px] tracking-[0.2em] font-black transition-all ${hasApiKey ? 'border-brand-success/50 text-brand-success bg-brand-success/10 shadow-[0_0_20px_rgba(0,255,127,0.3)] hover:brightness-125' : 'border-brand-primary/50 text-brand-primary bg-brand-primary/5 shadow-[0_0_15px_rgba(255,215,0,0.2)] hover:scale-105'}`}
-          >
-            <span className={`w-2 h-2 rounded-full ${hasApiKey ? 'bg-brand-success' : 'bg-brand-primary animate-pulse'}`} />
-            {hasApiKey ? 'TROCAR / DESATIVAR CHAVE' : 'CONFIGURAR CHAVE (ILIMITADO)'}
-          </button>
-          
-          <div className="hidden lg:flex items-center gap-6 font-mono text-[9px] tracking-[0.2em] text-gray-500">
+        <div className="flex items-center gap-8">
+          <div className="flex items-center gap-6 font-mono text-[9px] tracking-[0.2em] text-gray-500">
              <span className="flex items-center gap-3">STATUS <span className="w-2.5 h-2.5 bg-brand-success rounded-full animate-pulse shadow-[0_0_10px_#00FF7F]" /></span>
              <span className="w-px h-6 bg-white/10" />
-             <span className="text-brand-info font-bold">V5.1_SAFE</span>
+             <span className="text-brand-info font-bold uppercase">Acesso Liberado</span>
           </div>
         </div>
       </header>
@@ -258,7 +219,7 @@ const App: React.FC = () => {
                      <div className="absolute inset-0 bg-brand-primary animate-shimmer" style={{ width: '40%' }} />
                   </div>
                   <p className="font-display text-3xl lg:text-5xl font-black tracking-[0.4em] gradient-text-neon animate-pulse">SINTETIZANDO</p>
-                  <p className="font-mono text-[9px] text-gray-400 mt-10 tracking-[0.4em] uppercase font-bold px-12">Isto pode levar até 20 segundos. Se falhar por cota, troque a chave no topo.</p>
+                  <p className="font-mono text-[9px] text-gray-400 mt-10 tracking-[0.4em] uppercase font-bold px-12">Isto pode levar até 20 segundos. Aguarde a resposta do núcleo.</p>
                 </div>
               )}
             </div>
@@ -268,14 +229,8 @@ const App: React.FC = () => {
           
           {error && (
             <div className="bg-brand-danger/20 border-2 border-brand-danger/40 p-8 text-center animate-in zoom-in duration-300 rounded-xl shadow-[0_0_30px_rgba(239,68,68,0.2)]">
-              <p className="text-brand-danger font-display text-[10px] tracking-[0.4em] font-black uppercase mb-4">ALERTA DE SISTEMA</p>
-              <p className="text-white font-mono text-[11px] uppercase tracking-widest leading-relaxed mb-6">{error}</p>
-              <button 
-                onClick={handleOpenKeySelector}
-                className="bg-brand-primary text-black font-display text-[11px] font-black px-10 py-4 rounded-md hover:bg-white transition-all tracking-widest shadow-xl"
-              >
-                TROCAR CHAVE (SELECIONAR PROJETO PAGO)
-              </button>
+              <p className="text-brand-danger font-display text-[10px] tracking-[0.4em] font-black uppercase mb-4">ERRO DE PROCESSAMENTO</p>
+              <p className="text-white font-mono text-[11px] uppercase tracking-widest leading-relaxed">{error}</p>
             </div>
           )}
         </section>
@@ -286,7 +241,7 @@ const App: React.FC = () => {
            <div className="flex flex-col lg:flex-row items-center gap-6">
               <h4 className="font-display font-black text-xl tracking-tighter text-white">AD<span className="text-brand-primary">RENALINE</span></h4>
               <span className="hidden lg:block w-px h-6 bg-white/10" />
-              <span className="font-mono text-[10px] text-gray-600 tracking-[0.4em]">v5.1_SAFE_CORE // © 2025</span>
+              <span className="font-mono text-[10px] text-gray-600 tracking-[0.4em]">v5.2_OPEN_CORE // © 2025</span>
            </div>
         </div>
       </footer>

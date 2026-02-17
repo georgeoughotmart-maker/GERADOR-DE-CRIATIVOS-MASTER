@@ -23,11 +23,11 @@ const withRetry = async <T>(fn: () => Promise<T>, retries = 1, delay = 2000): Pr
 
     if (isQuotaError) {
       if (retries > 0) {
-        console.warn(`Tentativa de recuperação de cota em ${delay}ms...`);
+        console.warn(`Aguardando cota disponível em ${delay}ms...`);
         await wait(delay);
         return withRetry(fn, retries - 1, delay * 2);
       }
-      throw new Error("LIMITE DE COTA EXCEDIDO (LIMIT: 0): O Google desativou a geração de imagens na sua chave atual (Free Tier). Para resolver, clique em 'TROCAR CHAVE' no topo do app e selecione um projeto que tenha FATURAMENTO ATIVO (Billing) configurado no Google Cloud.");
+      throw new Error("COTA EXCEDIDA: O servidor está processando muitas requisições no momento. Por favor, tente novamente em alguns segundos.");
     }
     throw error;
   }
@@ -53,7 +53,7 @@ export const generateAdCreative = async (
   params?: AdParameters
 ): Promise<string> => {
   return withRetry(async () => {
-    // Cria instância nova a cada chamada para garantir o uso da chave mais recente injetada pelo dialog
+    // Inicialização simplificada usando a chave de ambiente
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const modelName = 'gemini-2.5-flash-image';
     
@@ -66,16 +66,16 @@ export const generateAdCreative = async (
     }
 
     const stylePrompt = getPromptForStyle(style);
-    const overlayTextPrompt = params?.overlayText ? `IMPORTANT: Render the text "${params.overlayText}" with high-end typography into the scene.` : "";
+    const overlayTextPrompt = params?.overlayText ? `IMPORTANT: High-end artistic typography for the text "${params.overlayText}".` : "";
     
     const finalPrompt = `
-      TASK: Synthesize an ultra-premium advertising creative.
-      STYLE DIRECTIVE: ${stylePrompt}
+      TASK: Create an ultra-premium advertising creative masterpiece.
+      STYLE: ${stylePrompt}
       ${overlayTextPrompt}
-      ADDITIONAL CONTEXT: ${customInstructions || ""}
-      COMPOSITION: Use the first image as the absolute Hero Product. The product's shape and labels must remain authentic. Transform the environment and lighting to match the style directive.
-      ${logoBase64 ? `BRANDING: Integrate the second image as a brand logo in the ${logoPosition} area.` : ""}
-      RESOLUTION: 4K Ultra-HD, masterpiece quality, commercial aesthetics.
+      ADDITIONAL INFO: ${customInstructions || ""}
+      COMPOSITION: Hero Product is the centerpiece. Background, lighting, and atmospherics must be completely reimagined according to style.
+      ${logoBase64 ? `BRANDING: Place logo at ${logoPosition}.` : ""}
+      QUALITY: Masterpiece, 4K, Commercial Grade.
     `;
 
     parts.push({ text: finalPrompt });
@@ -86,7 +86,7 @@ export const generateAdCreative = async (
     });
 
     const candidate = response.candidates?.[0];
-    if (!candidate?.content?.parts) throw new Error("A IA não retornou um resultado válido.");
+    if (!candidate?.content?.parts) throw new Error("A IA não retornou uma imagem válida.");
 
     for (const part of candidate.content.parts) {
       if (part.inlineData?.data) {
@@ -94,7 +94,7 @@ export const generateAdCreative = async (
       }
     }
 
-    throw new Error("Nenhuma imagem gerada. Tente reduzir a complexidade das instruções.");
+    throw new Error("Falha ao sintetizar a imagem. Tente outro estilo.");
   });
 };
 
@@ -108,7 +108,7 @@ export const generateAdCopy = async (
     const modelName = 'gemini-3-flash-preview';
     
     const imgInfo = getImageData(imageBase64);
-    const prompt = `Como um redator sênior, analise este produto e o estilo "${style}". Crie 5 headlines magnéticas e 5 descrições persuasivas. Retorne APENAS um JSON válido. Idioma: Português.`;
+    const prompt = `Como um mestre do marketing, analise este produto no estilo "${style}". Crie 5 títulos magnéticos e 5 textos de copy curtos. Retorne APENAS JSON. Idioma: Português.`;
 
     const response = await ai.models.generateContent({
       model: modelName,
@@ -134,7 +134,7 @@ export const generateAdCopy = async (
     try {
       return JSON.parse(response.text || '{"titles":[], "descriptions":[]}');
     } catch {
-      return { titles: ["Inovação Pura", "Design de Elite"], descriptions: ["O futuro chegou.", "Qualidade sem precedentes."] };
+      return { titles: ["Inovação Pura", "Design de Elite"], descriptions: ["Transforme sua presença digital.", "Qualidade incomparável."] };
     }
   });
 };
