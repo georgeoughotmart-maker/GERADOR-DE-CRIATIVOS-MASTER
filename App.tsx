@@ -33,8 +33,15 @@ const App: React.FC = () => {
 
   const handleOpenKeySelector = async () => {
     if (window.aistudio?.openSelectKey) {
+      setError(null);
       await window.aistudio.openSelectKey();
-      setHasApiKey(true); // Assume sucesso para evitar race conditions
+      // Verificamos novamente após o fechamento do diálogo
+      if (window.aistudio?.hasSelectedApiKey) {
+        const hasKey = await window.aistudio.hasSelectedApiKey();
+        setHasApiKey(hasKey);
+      } else {
+        setHasApiKey(true); // Assume sucesso para desbloquear a UI
+      }
     }
   };
 
@@ -64,11 +71,13 @@ const App: React.FC = () => {
       setGeneratedImage(imageResult);
       setGeneratedCopy(copyResult);
     } catch (err: any) {
-      console.error(err);
-      if (err.message?.includes('429') || err.message?.includes('RESOURCE_EXHAUSTED')) {
-        setError("COTA EXCEDIDA: O limite gratuito foi atingido. Clique no botão 'CONFIGURAR CHAVE' no topo para usar sua própria API Key e continuar gerando sem limites.");
+      console.error("API Error Trace:", err);
+      const errStr = JSON.stringify(err).toLowerCase();
+      
+      if (errStr.includes('429') || errStr.includes('resource_exhausted') || errStr.includes('limit: 0')) {
+        setError("COTA ZERO DETECTADA: A chave atual não tem permissão para gerar imagens (Free Tier Limit 0). Para resolver, clique no botão 'TROCAR CHAVE' e escolha uma chave de um projeto com faturamento ativo (Paid Project).");
       } else {
-        setError(err.message || "ERRO DE SÍNTESE: O MOTOR IA NÃO RESPONDEU DENTRO DOS PARÂMETROS.");
+        setError(err.message || "ERRO CRÍTICO: O sistema não conseguiu processar a solicitação.");
       }
     } finally {
       setIsGenerating(false);
@@ -81,16 +90,6 @@ const App: React.FC = () => {
       link.href = generatedImage;
       link.download = `ADRENALINE_CRIATIVO_${Date.now()}.jpg`;
       link.click();
-    }
-  };
-
-  const getPositionClass = (pos: LogoPosition) => {
-    switch(pos) {
-      case LogoPosition.TOP_LEFT: return "top-8 left-8";
-      case LogoPosition.TOP_RIGHT: return "top-8 right-8";
-      case LogoPosition.BOTTOM_LEFT: return "bottom-8 left-8";
-      case LogoPosition.BOTTOM_RIGHT: return "bottom-8 right-8";
-      default: return "top-8 right-8";
     }
   };
 
@@ -125,16 +124,16 @@ const App: React.FC = () => {
         <div className="flex items-center gap-4 lg:gap-8">
           <button 
             onClick={handleOpenKeySelector}
-            className={`flex items-center gap-3 px-6 py-2 rounded-full border-2 font-display text-[9px] tracking-[0.2em] font-black transition-all ${hasApiKey ? 'border-brand-success/50 text-brand-success bg-brand-success/5 shadow-[0_0_15px_rgba(0,255,127,0.2)]' : 'border-brand-primary/50 text-brand-primary bg-brand-primary/5 shadow-[0_0_15px_rgba(255,215,0,0.2)] hover:scale-105'}`}
+            className={`flex items-center gap-3 px-6 py-2 rounded-full border-2 font-display text-[9px] tracking-[0.2em] font-black transition-all ${hasApiKey ? 'border-brand-success/50 text-brand-success bg-brand-success/10 shadow-[0_0_20px_rgba(0,255,127,0.3)] hover:brightness-125' : 'border-brand-primary/50 text-brand-primary bg-brand-primary/5 shadow-[0_0_15px_rgba(255,215,0,0.2)] hover:scale-105'}`}
           >
             <span className={`w-2 h-2 rounded-full ${hasApiKey ? 'bg-brand-success' : 'bg-brand-primary animate-pulse'}`} />
-            {hasApiKey ? 'CHAVE CONFIGURADA' : 'CONFIGURAR CHAVE (ILIMITADO)'}
+            {hasApiKey ? 'TROCAR / DESATIVAR CHAVE' : 'CONFIGURAR CHAVE (ILIMITADO)'}
           </button>
           
           <div className="hidden lg:flex items-center gap-6 font-mono text-[9px] tracking-[0.2em] text-gray-500">
              <span className="flex items-center gap-3">STATUS <span className="w-2.5 h-2.5 bg-brand-success rounded-full animate-pulse shadow-[0_0_10px_#00FF7F]" /></span>
              <span className="w-px h-6 bg-white/10" />
-             <span className="text-brand-info font-bold">V5.0_SUPREME</span>
+             <span className="text-brand-info font-bold">V5.1_SAFE</span>
           </div>
         </div>
       </header>
@@ -163,24 +162,10 @@ const App: React.FC = () => {
                   {logoImage && <button onClick={() => setLogoImage(null)} className="text-[10px] text-brand-danger font-black uppercase tracking-widest hover:brightness-150 transition-all underline underline-offset-4">Remover</button>}
                 </div>
                 <UploadZone onImageSelected={setLogoImage} currentImage={logoImage} variant="compact" />
-                
-                {logoImage && (
-                  <div className="grid grid-cols-4 gap-2 pt-2">
-                    {Object.values(LogoPosition).map((pos) => (
-                      <button
-                        key={pos}
-                        onClick={() => setLogoPosition(pos)}
-                        className={`py-2 text-[7px] lg:text-[8px] font-black border-2 transition-all uppercase tracking-widest rounded-md ${logoPosition === pos ? 'bg-brand-secondary/30 border-brand-secondary text-white shadow-[0_0_10px_rgba(255,0,255,0.4)]' : 'bg-white/5 border-white/10 text-gray-500 hover:text-gray-300'}`}
-                      >
-                        {pos.split(' ')[1] || pos}
-                      </button>
-                    ))}
-                  </div>
-                )}
               </div>
 
               <div className="glass-card p-4 lg:p-6 rounded-xl neon-border-blue bg-black/60 space-y-4">
-                 <label className="text-[10px] font-black text-gray-300 uppercase tracking-widest block">Texto Renderizado por IA</label>
+                 <label className="text-[10px] font-black text-gray-300 uppercase tracking-widest block">Texto no Design</label>
                  <input 
                   type="text"
                   placeholder="EX: 50% OFF, NOVOS SABORES..."
@@ -253,11 +238,6 @@ const App: React.FC = () => {
                 <div className="relative w-full max-w-4xl mx-auto flex flex-col items-center justify-center animate-in fade-in duration-700">
                   <div className="relative p-1 bg-gradient-to-br from-white/10 to-white/5 rounded-lg border-2 border-white/10">
                     <img src={originalImage} alt="Esboço" className="max-w-full max-h-[40vh] lg:max-h-[60vh] object-contain opacity-20 grayscale filter blur-[4px] scale-95" />
-                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                       <div className="border-2 border-white/10 px-8 lg:px-16 py-4 lg:py-8 bg-black/80 backdrop-blur-xl rounded-xl">
-                          <p className="font-display font-black text-[12px] lg:text-[14px] tracking-[0.8em] text-white/30 uppercase text-center">PRONTO PARA<br/>SÍNTESE</p>
-                       </div>
-                    </div>
                   </div>
                 </div>
               ) : (
@@ -278,22 +258,9 @@ const App: React.FC = () => {
                      <div className="absolute inset-0 bg-brand-primary animate-shimmer" style={{ width: '40%' }} />
                   </div>
                   <p className="font-display text-3xl lg:text-5xl font-black tracking-[0.4em] gradient-text-neon animate-pulse">SINTETIZANDO</p>
-                  <p className="font-mono text-[9px] text-gray-400 mt-10 tracking-[0.4em] uppercase font-bold px-12">Isto pode levar até 20 segundos dependendo da complexidade do estilo.</p>
+                  <p className="font-mono text-[9px] text-gray-400 mt-10 tracking-[0.4em] uppercase font-bold px-12">Isto pode levar até 20 segundos. Se falhar por cota, troque a chave no topo.</p>
                 </div>
               )}
-            </div>
-
-            <div className="p-6 lg:p-10 border-t-2 border-white/10 bg-black/60">
-               <div className="flex gap-4 lg:gap-6 items-center mb-6">
-                  <span className="text-[9px] lg:text-[10px] font-black text-gray-400 uppercase tracking-[0.5em]">Refinamento Neural</span>
-                  <div className="h-[2px] flex-1 bg-gradient-to-r from-white/10 to-transparent" />
-               </div>
-               <textarea
-                  value={customPrompt}
-                  onChange={(e) => setCustomPrompt(e.target.value)}
-                  placeholder="Instruções manuais para a IA (ex: 'adicionar fumaça', 'reflexos 4k', 'luz azul'...)"
-                  className="w-full bg-white/5 border border-white/10 rounded-xl px-6 py-4 text-[12px] text-white/80 placeholder-gray-800 outline-none focus:border-brand-primary/50 transition-all font-mono font-bold resize-none h-24"
-                />
             </div>
           </div>
 
@@ -303,14 +270,12 @@ const App: React.FC = () => {
             <div className="bg-brand-danger/20 border-2 border-brand-danger/40 p-8 text-center animate-in zoom-in duration-300 rounded-xl shadow-[0_0_30px_rgba(239,68,68,0.2)]">
               <p className="text-brand-danger font-display text-[10px] tracking-[0.4em] font-black uppercase mb-4">ALERTA DE SISTEMA</p>
               <p className="text-white font-mono text-[11px] uppercase tracking-widest leading-relaxed mb-6">{error}</p>
-              {error.includes('COTA') && (
-                <button 
-                  onClick={handleOpenKeySelector}
-                  className="bg-brand-primary text-black font-display text-[10px] font-black px-8 py-3 rounded-md hover:bg-white transition-colors tracking-widest"
-                >
-                  USAR MINHA PRÓPRIA CHAVE (GRÁTIS)
-                </button>
-              )}
+              <button 
+                onClick={handleOpenKeySelector}
+                className="bg-brand-primary text-black font-display text-[11px] font-black px-10 py-4 rounded-md hover:bg-white transition-all tracking-widest shadow-xl"
+              >
+                TROCAR CHAVE (SELECIONAR PROJETO PAGO)
+              </button>
             </div>
           )}
         </section>
@@ -321,10 +286,9 @@ const App: React.FC = () => {
            <div className="flex flex-col lg:flex-row items-center gap-6">
               <h4 className="font-display font-black text-xl tracking-tighter text-white">AD<span className="text-brand-primary">RENALINE</span></h4>
               <span className="hidden lg:block w-px h-6 bg-white/10" />
-              <span className="font-mono text-[10px] text-gray-600 tracking-[0.4em]">v5.0_PRO_CORE // © 2025</span>
+              <span className="font-mono text-[10px] text-gray-600 tracking-[0.4em]">v5.1_SAFE_CORE // © 2025</span>
            </div>
         </div>
-        <p className="text-[10px] font-mono text-gray-500 tracking-widest uppercase text-center lg:text-right">Desenvolvido para Marcas que Dominam o Futuro.</p>
       </footer>
     </div>
   );

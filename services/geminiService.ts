@@ -9,36 +9,39 @@ const getImageData = (dataUrl: string) => {
 
 const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-const withRetry = async <T>(fn: () => Promise<T>, retries = 2, delay = 3000): Promise<T> => {
+const withRetry = async <T>(fn: () => Promise<T>, retries = 1, delay = 2000): Promise<T> => {
   try {
     return await fn();
   } catch (error: any) {
-    const errorStr = JSON.stringify(error).toUpperCase();
-    const isRateLimit = errorStr.includes('429') || errorStr.includes('RESOURCE_EXHAUSTED');
-    
-    if (isRateLimit && retries > 0) {
-      console.warn(`Cota atingida. Tentando novamente em ${delay}ms...`);
-      await wait(delay);
-      return withRetry(fn, retries - 1, delay * 2);
+    const errorMsg = error?.message?.toLowerCase() || "";
+    const errorStatus = error?.status;
+    const isQuotaError = errorMsg.includes('429') || 
+                        errorMsg.includes('resource_exhausted') || 
+                        errorMsg.includes('quota') ||
+                        errorMsg.includes('limit') ||
+                        errorStatus === 429;
+
+    if (isQuotaError) {
+      if (retries > 0) {
+        console.warn(`Tentativa de recuperação de cota em ${delay}ms...`);
+        await wait(delay);
+        return withRetry(fn, retries - 1, delay * 2);
+      }
+      throw new Error("LIMITE DE COTA EXCEDIDO (LIMIT: 0): O Google desativou a geração de imagens na sua chave atual (Free Tier). Para resolver, clique em 'TROCAR CHAVE' no topo do app e selecione um projeto que tenha FATURAMENTO ATIVO (Billing) configurado no Google Cloud.");
     }
-    
-    if (isRateLimit) {
-      throw new Error("COTA_EXCEDIDA: O modelo de imagem atingiu o limite da chave gratuita. Por favor, clique em 'CONFIGURAR CHAVE' e use sua própria API Key paga para gerar sem restrições.");
-    }
-    
     throw error;
   }
 };
 
 const getPromptForStyle = (style: AdStyle): string => {
   const styles: Record<string, string> = {
-    [AdStyle.CYBERPUNK]: "High-impact cyberpunk advertising. Neon lights, holographic glitches, futuristic night city.",
-    [AdStyle.LUXURY]: "Ultra-luxurious premium ad. White or black marble, gold accents, elegant spotlights.",
-    [AdStyle.EXPLOSIVE]: "Explosive energy ad. Product landing with impact, debris, energy sparks.",
-    [AdStyle.VAPORWAVE_DREAM]: "Nostalgic vaporwave. Pastel pinks/blues, 80s aesthetics, palm trees, low-poly grids.",
-    [AdStyle.GOLDEN_LIQUID]: "Majestic liquid gold luxury. Swirling molten gold, highly reflective surfaces."
+    [AdStyle.CYBERPUNK]: "Cyberpunk neon advertising. High-tech, futuristic city, glowing edges, cinematic lighting.",
+    [AdStyle.LUXURY]: "Premium luxury photography. Deep shadows, elegant golden highlights, marble texture, ultra-sharp.",
+    [AdStyle.EXPLOSIVE]: "Dynamic explosive action. Debris, motion blur, intense energy sparks, high-speed shutter.",
+    [AdStyle.FOOD_GOURMET]: "Professional gourmet food close-up. Warm moody lighting, steam, macro detail, bokeh.",
+    [AdStyle.BEAUTY_GOLD]: "High-end beauty product shot. Shimmering gold particles, silk drapes, soft focus luxury."
   };
-  return styles[style] || "Professional high-impact commercial photography, vibrant colors, dramatic lighting.";
+  return styles[style] || "Professional commercial high-impact advertising photography, studio lighting.";
 };
 
 export const generateAdCreative = async (
@@ -50,27 +53,10 @@ export const generateAdCreative = async (
   params?: AdParameters
 ): Promise<string> => {
   return withRetry(async () => {
-    // Inicializa uma nova instância para garantir que usa a chave mais recente selecionada no dialog
+    // Cria instância nova a cada chamada para garantir o uso da chave mais recente injetada pelo dialog
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const modelName = 'gemini-2.5-flash-image';
-    const basePrompt = getPromptForStyle(style);
     
-    const textOverlayDirective = params?.overlayText 
-      ? `IMPORTANT: Elegantly render the text "${params.overlayText}" in the composition.` 
-      : "";
-
-    const prompt = `
-      Professional commercial photographer and digital artist task.
-      Style Instruction: ${basePrompt}
-      ${textOverlayDirective}
-      ${customInstructions ? `Additional Context: ${customInstructions}` : ''}
-      
-      REQUIREMENTS:
-      1. Use FIRST image as HERO PRODUCT.
-      ${logoBase64 ? `2. Use SECOND image as LOGO in ${logoPosition}.` : ''}
-      3. Output 4K commercial quality.
-    `;
-
     const productInfo = getImageData(productBase64);
     const parts: any[] = [{ inlineData: { mimeType: productInfo.mimeType, data: productInfo.data } }];
 
@@ -79,7 +65,20 @@ export const generateAdCreative = async (
       parts.push({ inlineData: { mimeType: logoInfo.mimeType, data: logoInfo.data } });
     }
 
-    parts.push({ text: prompt });
+    const stylePrompt = getPromptForStyle(style);
+    const overlayTextPrompt = params?.overlayText ? `IMPORTANT: Render the text "${params.overlayText}" with high-end typography into the scene.` : "";
+    
+    const finalPrompt = `
+      TASK: Synthesize an ultra-premium advertising creative.
+      STYLE DIRECTIVE: ${stylePrompt}
+      ${overlayTextPrompt}
+      ADDITIONAL CONTEXT: ${customInstructions || ""}
+      COMPOSITION: Use the first image as the absolute Hero Product. The product's shape and labels must remain authentic. Transform the environment and lighting to match the style directive.
+      ${logoBase64 ? `BRANDING: Integrate the second image as a brand logo in the ${logoPosition} area.` : ""}
+      RESOLUTION: 4K Ultra-HD, masterpiece quality, commercial aesthetics.
+    `;
+
+    parts.push({ text: finalPrompt });
 
     const response = await ai.models.generateContent({
       model: modelName,
@@ -87,7 +86,7 @@ export const generateAdCreative = async (
     });
 
     const candidate = response.candidates?.[0];
-    if (!candidate?.content?.parts) throw new Error("Falha na síntese: Sem resposta da IA.");
+    if (!candidate?.content?.parts) throw new Error("A IA não retornou um resultado válido.");
 
     for (const part of candidate.content.parts) {
       if (part.inlineData?.data) {
@@ -95,7 +94,7 @@ export const generateAdCreative = async (
       }
     }
 
-    throw new Error("A IA não retornou uma imagem. Tente um estilo diferente.");
+    throw new Error("Nenhuma imagem gerada. Tente reduzir a complexidade das instruções.");
   });
 };
 
@@ -108,8 +107,8 @@ export const generateAdCopy = async (
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const modelName = 'gemini-3-flash-preview';
     
-    const prompt = `Estrategista de marcas. Crie 5 headlines e 5 descrições persuasivas em JSON para este anúncio de estilo "${style}". Retorne apenas o JSON. Idioma: Português.`;
     const imgInfo = getImageData(imageBase64);
+    const prompt = `Como um redator sênior, analise este produto e o estilo "${style}". Crie 5 headlines magnéticas e 5 descrições persuasivas. Retorne APENAS um JSON válido. Idioma: Português.`;
 
     const response = await ai.models.generateContent({
       model: modelName,
@@ -133,12 +132,9 @@ export const generateAdCopy = async (
     });
 
     try {
-      return JSON.parse(response.text || '{}');
+      return JSON.parse(response.text || '{"titles":[], "descriptions":[]}');
     } catch {
-      return { 
-        titles: ["O Próximo Nível", "Design de Elite"], 
-        descriptions: ["Experiência incomparável.", "Transforme sua realidade hoje."] 
-      };
+      return { titles: ["Inovação Pura", "Design de Elite"], descriptions: ["O futuro chegou.", "Qualidade sem precedentes."] };
     }
   });
 };
