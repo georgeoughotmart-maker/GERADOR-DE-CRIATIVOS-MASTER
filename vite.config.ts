@@ -5,7 +5,7 @@ import react from '@vitejs/plugin-react';
 export default defineConfig({
   plugins: [react()],
   define: {
-    // Injeta a API_KEY definida no painel da Vercel para ser acessível via process.env.API_KEY
+    // Garante que o process.env.API_KEY esteja disponível no lado do cliente
     'process.env.API_KEY': JSON.stringify(process.env.API_KEY)
   },
   build: {
@@ -17,6 +17,17 @@ export default defineConfig({
         drop_console: true,
         drop_debugger: true
       }
+    },
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'vendor': ['react', 'react-dom', '@google/genai']
+        }
+      }
     }
+  },
+  server: {
+    port: 3000,
+    strictPort: true
   }
 });
