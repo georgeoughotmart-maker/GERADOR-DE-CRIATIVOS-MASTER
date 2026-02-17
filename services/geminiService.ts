@@ -7,6 +7,24 @@ const getImageData = (dataUrl: string) => {
   return { mimeType: match[1], data: match[2] };
 };
 
+const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+const withRetry = async <T>(fn: () => Promise<T>, retries = 3, delay = 2000): Promise<T> => {
+  try {
+    return await fn();
+  } catch (error: any) {
+    const isRateLimit = error?.message?.includes('429') || error?.status === 429;
+    const isQuotaExceeded = error?.message?.includes('RESOURCE_EXHAUSTED');
+    
+    if ((isRateLimit || isQuotaExceeded) && retries > 0) {
+      console.warn(`Cota atingida. Tentando novamente em ${delay}ms... (Tentativas restantes: ${retries})`);
+      await wait(delay);
+      return withRetry(fn, retries - 1, delay * 2);
+    }
+    throw error;
+  }
+};
+
 const getPromptForStyle = (style: AdStyle): string => {
   const styles: Record<string, string> = {
     [AdStyle.CYBERPUNK]: "High-impact cyberpunk advertising. Neon lights, holographic glitches, futuristic night city.",
@@ -26,51 +44,53 @@ export const generateAdCreative = async (
   logoPosition: LogoPosition = LogoPosition.TOP_RIGHT,
   params?: AdParameters
 ): Promise<string> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  const modelName = 'gemini-2.5-flash-image';
-  const basePrompt = getPromptForStyle(style);
-  
-  const textOverlayDirective = params?.overlayText 
-    ? `IMPORTANT: Elegantly render the text "${params.overlayText}" in the composition.` 
-    : "";
-
-  const prompt = `
-    Professional commercial photographer and digital artist task.
-    Style Instruction: ${basePrompt}
-    ${textOverlayDirective}
-    ${customInstructions ? `Additional Context: ${customInstructions}` : ''}
+  return withRetry(async () => {
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const modelName = 'gemini-2.5-flash-image';
+    const basePrompt = getPromptForStyle(style);
     
-    REQUIREMENTS:
-    1. Use FIRST image as HERO PRODUCT.
-    ${logoBase64 ? `2. Use SECOND image as LOGO in ${logoPosition}.` : ''}
-    3. Output 4K commercial quality.
-  `;
+    const textOverlayDirective = params?.overlayText 
+      ? `IMPORTANT: Elegantly render the text "${params.overlayText}" in the composition.` 
+      : "";
 
-  const productInfo = getImageData(productBase64);
-  const parts: any[] = [{ inlineData: { mimeType: productInfo.mimeType, data: productInfo.data } }];
+    const prompt = `
+      Professional commercial photographer and digital artist task.
+      Style Instruction: ${basePrompt}
+      ${textOverlayDirective}
+      ${customInstructions ? `Additional Context: ${customInstructions}` : ''}
+      
+      REQUIREMENTS:
+      1. Use FIRST image as HERO PRODUCT.
+      ${logoBase64 ? `2. Use SECOND image as LOGO in ${logoPosition}.` : ''}
+      3. Output 4K commercial quality.
+    `;
 
-  if (logoBase64) {
-    const logoInfo = getImageData(logoBase64);
-    parts.push({ inlineData: { mimeType: logoInfo.mimeType, data: logoInfo.data } });
-  }
+    const productInfo = getImageData(productBase64);
+    const parts: any[] = [{ inlineData: { mimeType: productInfo.mimeType, data: productInfo.data } }];
 
-  parts.push({ text: prompt });
-
-  const response = await ai.models.generateContent({
-    model: modelName,
-    contents: { parts: parts }
-  });
-
-  const candidate = response.candidates?.[0];
-  if (!candidate?.content?.parts) throw new Error("Falha na síntese: Sem resposta da IA.");
-
-  for (const part of candidate.content.parts) {
-    if (part.inlineData?.data) {
-      return `data:${part.inlineData.mimeType || 'image/png'};base64,${part.inlineData.data}`;
+    if (logoBase64) {
+      const logoInfo = getImageData(logoBase64);
+      parts.push({ inlineData: { mimeType: logoInfo.mimeType, data: logoInfo.data } });
     }
-  }
 
-  throw new Error("Nenhuma imagem gerada.");
+    parts.push({ text: prompt });
+
+    const response = await ai.models.generateContent({
+      model: modelName,
+      contents: { parts: parts }
+    });
+
+    const candidate = response.candidates?.[0];
+    if (!candidate?.content?.parts) throw new Error("Falha na síntese: Sem resposta da IA.");
+
+    for (const part of candidate.content.parts) {
+      if (part.inlineData?.data) {
+        return `data:${part.inlineData.mimeType || 'image/png'};base64,${part.inlineData.data}`;
+      }
+    }
+
+    throw new Error("Nenhuma imagem gerada.");
+  });
 };
 
 export const generateAdCopy = async (
@@ -78,39 +98,41 @@ export const generateAdCopy = async (
   style: AdStyle,
   customInstructions?: string
 ): Promise<AdCopy> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-  const modelName = 'gemini-3-flash-preview';
-  
-  const prompt = `Estrategista de marcas. Crie 5 headlines e 5 descrições persuasivas em JSON para este anúncio "${style}". Idioma: Português.`;
-  const imgInfo = getImageData(imageBase64);
+  return withRetry(async () => {
+    const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+    const modelName = 'gemini-3-flash-preview';
+    
+    const prompt = `Estrategista de marcas. Crie 5 headlines e 5 descrições persuasivas em JSON para este anúncio "${style}". Idioma: Português.`;
+    const imgInfo = getImageData(imageBase64);
 
-  const response = await ai.models.generateContent({
-    model: modelName,
-    contents: {
-      parts: [
-        { inlineData: { mimeType: imgInfo.mimeType, data: imgInfo.data } },
-        { text: prompt }
-      ]
-    },
-    config: {
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: Type.OBJECT,
-        properties: {
-          titles: { type: Type.ARRAY, items: { type: Type.STRING } },
-          descriptions: { type: Type.ARRAY, items: { type: Type.STRING } }
-        },
-        required: ["titles", "descriptions"]
+    const response = await ai.models.generateContent({
+      model: modelName,
+      contents: {
+        parts: [
+          { inlineData: { mimeType: imgInfo.mimeType, data: imgInfo.data } },
+          { text: prompt }
+        ]
+      },
+      config: {
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            titles: { type: Type.ARRAY, items: { type: Type.STRING } },
+            descriptions: { type: Type.ARRAY, items: { type: Type.STRING } }
+          },
+          required: ["titles", "descriptions"]
+        }
       }
+    });
+
+    try {
+      return JSON.parse(response.text || '{}');
+    } catch {
+      return { 
+        titles: ["O Próximo Nível", "Design de Elite"], 
+        descriptions: ["Experiência incomparável.", "Transforme sua realidade hoje."] 
+      };
     }
   });
-
-  try {
-    return JSON.parse(response.text);
-  } catch {
-    return { 
-      titles: ["O Próximo Nível", "Design de Elite"], 
-      descriptions: ["Experiência incomparável.", "Transforme sua realidade hoje."] 
-    };
-  }
 };
