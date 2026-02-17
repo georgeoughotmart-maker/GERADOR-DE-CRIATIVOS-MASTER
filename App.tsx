@@ -46,7 +46,8 @@ const App: React.FC = () => {
       setGeneratedImage(imageResult);
       setGeneratedCopy(copyResult);
     } catch (err: any) {
-      setError("ERRO DE SÍNTESE: O MOTOR IA NÃO RESPONDEU DENTRO DOS PARÂMETROS.");
+      console.error(err);
+      setError(err.message || "ERRO DE SÍNTESE: O MOTOR IA NÃO RESPONDEU DENTRO DOS PARÂMETROS.");
     } finally {
       setIsGenerating(false);
     }
@@ -308,7 +309,8 @@ const App: React.FC = () => {
           
           {error && (
             <div className="bg-brand-danger/20 border-2 border-brand-danger/40 p-6 lg:p-10 text-center animate-in zoom-in duration-300 rounded-xl shadow-[0_0_30px_rgba(239,68,68,0.2)]">
-              <p className="text-brand-danger font-display text-[10px] lg:text-[12px] tracking-[0.4em] font-black uppercase">{error}</p>
+              <p className="text-brand-danger font-display text-[10px] lg:text-[12px] tracking-[0.4em] font-black uppercase mb-4">SINAL_DE_ERRO_CAPTADO</p>
+              <p className="text-white font-mono text-[10px] lg:text-[11px] uppercase tracking-widest leading-relaxed">{error}</p>
             </div>
           )}
         </section>

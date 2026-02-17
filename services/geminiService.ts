@@ -1,8 +1,10 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { AdStyle, AdCopy, LogoPosition, AdParameters } from "../types";
 
-const extractBase64 = (dataUrl: string): string => {
-  return dataUrl.split(',')[1];
+const getImageData = (dataUrl: string) => {
+  const match = dataUrl.match(/^data:(image\/[a-zA-Z+.-]+);base64,(.+)$/);
+  if (!match) throw new Error("Formato de imagem inválido");
+  return { mimeType: match[1], data: match[2] };
 };
 
 const getPromptForStyle = (style: AdStyle): string => {
@@ -64,8 +66,10 @@ export const generateAdCreative = async (
       : "";
 
     let finalPrompt = `
-      Expert advertising art director task.
-      Style Directive: ${basePrompt}
+      Expert advertising art director task. Generate an IMAGE output.
+      Role: You are a professional commercial photographer and digital artist.
+      
+      Instructions: ${basePrompt}
       Lighting: ${lightingStyle}
       Background: ${complexityStyle}
       Color Palette: ${colorDNA}
@@ -73,19 +77,21 @@ export const generateAdCreative = async (
 
       ${customInstructions ? `Additional Context: ${customInstructions}` : ''}
       
-      REQUIREMENTS:
-      1. Subject is the hero. Enhance but don't distort its original product identity.
+      IMAGE REQUIREMENTS:
+      1. Use the FIRST provided image as the HERO PRODUCT. Enhance it but keep its core identity.
       2. Professional 4K commercial photography quality.
-      ${logoBase64 ? `3. LOGO: Place the provided brand logo clearly in the ${logoPosition} corner.` : ''}
-      4. Ensure the output is vibrant, colorful, and ultra-appealing for social media conversion.
+      ${logoBase64 ? `3. BRAND LOGO: Use the SECOND provided image as the brand logo. Place it clearly in the ${logoPosition} corner of the final ad.` : ''}
+      4. Ensure the output is a single high-quality image, vibrant and ultra-appealing.
     `;
 
+    const productInfo = getImageData(productBase64);
     const parts: any[] = [
-      { inlineData: { mimeType: 'image/jpeg', data: extractBase64(productBase64) } }
+      { inlineData: { mimeType: productInfo.mimeType, data: productInfo.data } }
     ];
 
     if (logoBase64) {
-      parts.push({ inlineData: { mimeType: 'image/jpeg', data: extractBase64(logoBase64) } });
+      const logoInfo = getImageData(logoBase64);
+      parts.push({ inlineData: { mimeType: logoInfo.mimeType, data: logoInfo.data } });
     }
 
     parts.push({ text: finalPrompt });
@@ -95,17 +101,28 @@ export const generateAdCreative = async (
       contents: { parts: parts }
     });
 
-    const contentParts = response.candidates?.[0]?.content?.parts;
-    if (!contentParts) throw new Error("Generation failed");
+    const candidate = response.candidates?.[0];
+    if (!candidate || !candidate.content?.parts) {
+       throw new Error("O modelo não retornou conteúdo. Isso pode ser devido a filtros de segurança.");
+    }
 
-    for (const part of contentParts) {
+    let textFeedback = "";
+    for (const part of candidate.content.parts) {
       if (part.inlineData?.data) {
-        return `data:image/jpeg;base64,${part.inlineData.data}`;
+        return `data:${part.inlineData.mimeType || 'image/jpeg'};base64,${part.inlineData.data}`;
+      }
+      if (part.text) {
+        textFeedback += part.text;
       }
     }
-    throw new Error("No image data");
-  } catch (error) {
-    console.error(error);
+
+    if (textFeedback) {
+      throw new Error(`O modelo retornou apenas texto: ${textFeedback.substring(0, 100)}...`);
+    }
+
+    throw new Error("Nenhum dado de imagem foi gerado pelo modelo.");
+  } catch (error: any) {
+    console.error("Erro na geração do criativo:", error);
     throw error;
   }
 };
@@ -125,11 +142,12 @@ export const generateAdCopy = async (
       Idioma: Português (Brasil).
     `;
 
+    const imgInfo = getImageData(imageBase64);
     const response = await ai.models.generateContent({
       model: model,
       contents: {
         parts: [
-          { inlineData: { mimeType: 'image/jpeg', data: extractBase64(imageBase64) } },
+          { inlineData: { mimeType: imgInfo.mimeType, data: imgInfo.data } },
           { text: prompt }
         ]
       },
@@ -140,17 +158,19 @@ export const generateAdCopy = async (
           properties: {
             titles: { type: Type.ARRAY, items: { type: Type.STRING } },
             descriptions: { type: Type.ARRAY, items: { type: Type.STRING } }
-          }
+          },
+          required: ["titles", "descriptions"]
         }
       }
     });
 
     const rawData = JSON.parse(response.text || '{}');
     return {
-      titles: Array.isArray(rawData.titles) ? rawData.titles : ["Elegância Definida", "O Futuro da Forma"],
-      descriptions: Array.isArray(rawData.descriptions) ? rawData.descriptions : ["Descubra o extraordinário.", "Sinta a perfeição em cada detalhe."]
+      titles: Array.isArray(rawData.titles) && rawData.titles.length > 0 ? rawData.titles : ["Elegância Definida", "O Futuro da Forma"],
+      descriptions: Array.isArray(rawData.descriptions) && rawData.descriptions.length > 0 ? rawData.descriptions : ["Descubra o extraordinário.", "Sinta a perfeição em cada detalhe."]
     };
   } catch (error) {
-    return { titles: ["Elegância Definida", "O Futuro da Forma"], descriptions: ["Descubra o extraordinário.", "Sinta a perfeição em cada detalhe."] };
+    console.warn("Erro ao gerar copy:", error);
+    return { titles: ["Elegância Definida", "Perfeição em Forma"], descriptions: ["Descubra o extraordinário.", "Sinta a perfeição em cada detalhe."] };
   }
 };
