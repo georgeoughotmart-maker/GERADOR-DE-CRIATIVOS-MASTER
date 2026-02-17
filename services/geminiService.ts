@@ -9,7 +9,7 @@ const getImageData = (dataUrl: string) => {
 
 const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-const withRetry = async <T>(fn: () => Promise<T>, retries = 1, delay = 2000): Promise<T> => {
+const withRetry = async <T>(fn: () => Promise<T>, retries = 3, delay = 3000): Promise<T> => {
   try {
     return await fn();
   } catch (error: any) {
@@ -21,14 +21,16 @@ const withRetry = async <T>(fn: () => Promise<T>, retries = 1, delay = 2000): Pr
                         errorMsg.includes('limit') ||
                         errorStatus === 429;
 
-    if (isQuotaError) {
-      if (retries > 0) {
-        console.warn(`Aguardando cota disponível em ${delay}ms...`);
-        await wait(delay);
-        return withRetry(fn, retries - 1, delay * 2);
-      }
-      throw new Error("COTA EXCEDIDA: O servidor está processando muitas requisições no momento. Por favor, tente novamente em alguns segundos.");
+    if (isQuotaError && retries > 0) {
+      console.warn(`[API] Cota excedida. Tentando novamente em ${delay}ms... (Tentativas restantes: ${retries})`);
+      await wait(delay);
+      return withRetry(fn, retries - 1, delay * 2);
     }
+    
+    if (isQuotaError) {
+      throw new Error("LIMITE DE COTA: O Google limitou as requisições gratuitas para este modelo de imagem no momento. Por favor, aguarde cerca de 1 minuto ou utilize uma chave de projeto com faturamento ativo.");
+    }
+    
     throw error;
   }
 };
@@ -53,7 +55,6 @@ export const generateAdCreative = async (
   params?: AdParameters
 ): Promise<string> => {
   return withRetry(async () => {
-    // Inicialização simplificada usando a chave de ambiente
     const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
     const modelName = 'gemini-2.5-flash-image';
     
