@@ -16,6 +16,7 @@ export enum AdStyle {
   HOLOGRAPHIC = 'Holographic Iridescence',
   COZY_HOME = 'Warm Lifestyle',
   GEOMETRIC_3D = 'Abstract 3D',
+  ZEN_GARDEN = 'Zen Garden',
   
   // Existing New Styles
   VAPORWAVE_DREAM = 'Vaporwave Dream',
@@ -33,12 +34,20 @@ export enum AdStyle {
   HYPER_MINIMAL = 'Hyper Minimalist',
   SYNTHWAVE_SUN = 'Synthwave Sunset',
 
-  // PornFood Styles
+  // Food Styles
   FOOD_GOURMET = 'Gourmet Dark',
   FOOD_STREET = 'Street Messy',
   FOOD_FRESH = 'Ultra Fresh',
   FOOD_BBQ = 'Rustic BBQ',
   FOOD_SWEET = 'Sweet Dream',
+  FOOD_MOLECULAR = 'Molecular Gastronomy',
+  FOOD_RUSTIC = 'Rustic Wood',
+  FOOD_NEON = 'Neon Diner',
+  FOOD_MINIMAL = 'Minimal Plate',
+  FOOD_TROPICAL = 'Tropical Vibe',
+  FOOD_VINTAGE = 'Vintage Kitchen',
+  FOOD_SPICY = 'Spicy Heat',
+  FOOD_FROZEN = 'Frozen Ice',
 
   // Beauty & Fragrance Styles
   BEAUTY_CRYSTAL = 'Crystal Splash',
@@ -50,7 +59,11 @@ export enum AdStyle {
   BEAUTY_MATTE = 'Matte Professional',
   BEAUTY_VINTAGE = 'Vintage Pearl',
   BEAUTY_VELVET = 'Night Velvet',
-  BEAUTY_ORGANIC = 'Organic Essence'
+  BEAUTY_ORGANIC = 'Organic Essence',
+  BEAUTY_PEARL = 'Pearl Luxury',
+  BEAUTY_NEON = 'Neon Glam',
+  BEAUTY_DIAMOND = 'Diamond Sparkle',
+  BEAUTY_SILK = 'Silk Flow'
 }
 
 export enum LogoPosition {

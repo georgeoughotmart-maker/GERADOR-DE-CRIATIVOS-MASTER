@@ -4,8 +4,8 @@ import react from '@vitejs/plugin-react';
 export default defineConfig({
   plugins: [react()],
   define: {
-    // Substitui process.env.API_KEY no código pelo valor da variável de ambiente durante o build
-    'process.env.API_KEY': JSON.stringify(process.env.API_KEY)
+    // Substitui process.env.GEMINI_API_KEY no código pelo valor da variável de ambiente durante o build
+    'process.env.GEMINI_API_KEY': JSON.stringify(process.env.GEMINI_API_KEY)
   },
   build: {
     outDir: 'dist',

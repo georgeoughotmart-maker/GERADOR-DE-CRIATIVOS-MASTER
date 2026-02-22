@@ -11,12 +11,13 @@ const App: React.FC = () => {
   const [activeCategory, setActiveCategory] = useState<Category>('general');
   const [originalImage, setOriginalImage] = useState<string | null>(null);
   const [logoImage, setLogoImage] = useState<string | null>(null);
-  const [logoPosition, setLogoPosition] = useState<LogoPosition>(LogoPosition.TOP_RIGHT);
+  const [logoPosition] = useState<LogoPosition>(LogoPosition.TOP_RIGHT);
   const [generatedImage, setGeneratedImage] = useState<string | null>(null);
   const [generatedCopy, setGeneratedCopy] = useState<AdCopy | null>(null);
   const [selectedStyle, setSelectedStyle] = useState<AdStyle>(AdStyle.CYBERPUNK);
   const [isGenerating, setIsGenerating] = useState(false);
-  const [customPrompt, setCustomPrompt] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [customPrompt] = useState('');
   const [overlayText, setOverlayText] = useState('');
 
   const filteredStyles = useMemo(() => {
@@ -28,6 +29,7 @@ const App: React.FC = () => {
     setIsGenerating(true);
     setGeneratedImage(null);
     setGeneratedCopy(null);
+    setError(null);
 
     try {
       const params: AdParameters = { 
@@ -44,8 +46,8 @@ const App: React.FC = () => {
       setGeneratedImage(imageResult);
       setGeneratedCopy(copyResult);
     } catch (err: any) {
-      console.warn("Processamento interrompido silenciosamente:", err);
-      // O erro não é mais exibido em um box vermelho para o usuário.
+      console.error("Erro na geração:", err);
+      setError(err.message || "Ocorreu um erro inesperado ao gerar o criativo.");
     } finally {
       setIsGenerating(false);
     }
@@ -208,6 +210,15 @@ const App: React.FC = () => {
                       </div>
                    </div>
                    <h3 className="text-base lg:text-lg font-display font-black tracking-[0.4em] uppercase text-white/40">Ambiente de Síntese Vazio</h3>
+                </div>
+              )}
+
+              {error && (
+                <div className="absolute top-6 left-1/2 -translate-x-1/2 z-[210] bg-brand-danger/20 border border-brand-danger/50 backdrop-blur-xl px-6 py-3 rounded-lg animate-in slide-in-from-top duration-500">
+                  <p className="text-[10px] font-black text-brand-danger uppercase tracking-[0.2em] flex items-center gap-3">
+                    <span className="w-2 h-2 bg-brand-danger rounded-full animate-pulse" />
+                    {error}
+                  </p>
                 </div>
               )}
 
