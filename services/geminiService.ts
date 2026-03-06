@@ -147,7 +147,7 @@ export const generateAdCreative = async (
   params?: AdParameters,
   onStatusUpdate?: (status: string) => void
 ): Promise<string> => {
-  const modelName = 'gemini-2.5-flash-image';
+  const modelName = 'gemini-3.1-flash-image-preview';
   
   onStatusUpdate?.('OTIMIZANDO RECURSOS VISUAIS...');
   const optimizedProduct = await resizeImage(productBase64);
@@ -187,7 +187,8 @@ export const generateAdCreative = async (
       contents: { parts: parts },
       config: {
         imageConfig: {
-          aspectRatio: "1:1"
+          aspectRatio: "1:1",
+          imageSize: "1K"
         }
       }
     });

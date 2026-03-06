@@ -124,6 +124,9 @@ const App: React.FC = () => {
       if (errorMsg.includes("Requested entity was not found") || errorMsg.includes("API_KEY_INVALID") || errorMsg.includes("403")) {
         setError("Sua chave de API parece inválida ou não tem permissão para este modelo. Conecte novamente.");
         setHasApiKey(false);
+      } else if (errorMsg.includes("429") || errorMsg.includes("quota") || errorMsg.includes("RESOURCE_EXHAUSTED")) {
+        setError("Limite de cota atingido (Erro 429). Por favor, conecte sua PRÓPRIA API Key no topo para continuar usando sem limites.");
+        setHasApiKey(false);
       } else {
         setError(errorMsg || "Ocorreu um erro inesperado ao gerar o criativo.");
       }
