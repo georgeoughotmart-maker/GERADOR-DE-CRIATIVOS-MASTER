@@ -9,7 +9,7 @@ const getImageData = (dataUrl: string) => {
 
 const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-const resizeImage = (base64Str: string, maxWidth = 1024, maxHeight = 1024): Promise<string> => {
+const resizeImage = (base64Str: string, maxWidth = 512, maxHeight = 512): Promise<string> => {
   return new Promise((resolve) => {
     if (!base64Str || !base64Str.startsWith('data:image')) {
       console.error("[IA] Imagem inválida fornecida para redimensionamento");
@@ -72,16 +72,17 @@ export const isQuotaError = (error: any): boolean => {
          errorMsg.includes('quota_exceeded');
 };
 
-const withRetry = async <T>(fn: () => Promise<T>, retries = 3, delay = 5000, initialRetries = 3): Promise<T> => {
+const withRetry = async <T>(fn: () => Promise<T>, retries = 5, delay = 3000, initialRetries = 5): Promise<T> => {
   try {
     return await fn();
   } catch (error: any) {
     if (isQuotaError(error) && retries > 0) {
-      const jitter = Math.random() * 3000;
-      const waitTime = delay + jitter;
-      console.log(`[IA] Servidor ocupado ou limite de cota. Tentativa ${initialRetries - retries + 1}/${initialRetries}. Aguardando ${Math.round(waitTime/1000)}s...`);
+      const backoff = delay * Math.pow(1.5, initialRetries - retries);
+      const jitter = Math.random() * 2000;
+      const waitTime = backoff + jitter;
+      
       await wait(waitTime);
-      return withRetry(fn, retries - 1, delay * 1.5, initialRetries);
+      return withRetry(fn, retries - 1, delay, initialRetries);
     }
     
     throw error;
@@ -209,7 +210,7 @@ export const generateAdCreative = async (
     }
 
     throw new Error("Falha ao gerar imagem.");
-  }, 2, 2000, 2);
+  });
 };
 
 export const generateAdCopy = async (
@@ -251,5 +252,5 @@ export const generateAdCopy = async (
     } catch {
       return { titles: ["Inovação Pura"], descriptions: ["O futuro chegou."] };
     }
-  }, 2, 2000, 2);
+  });
 };

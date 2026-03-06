@@ -125,10 +125,10 @@ const App: React.FC = () => {
         setError("Sua chave de API parece inválida ou não tem permissão para este modelo. Conecte novamente.");
         setHasApiKey(false);
       } else if (errorMsg.includes("429") || errorMsg.includes("quota") || errorMsg.includes("RESOURCE_EXHAUSTED")) {
-        setError("Limite de cota atingido (Erro 429). Por favor, conecte sua PRÓPRIA API Key no topo para continuar usando sem limites.");
+        setError("⚠️ LIMITE DE COTA ATINGIDO: O sistema gratuito está sobrecarregado. Para gerar agora sem filas e com qualidade máxima, conecte sua própria chave (é rápido e grátis).");
         setHasApiKey(false);
       } else {
-        setError(errorMsg || "Ocorreu um erro inesperado ao gerar o criativo.");
+        setError(`ERRO NA GERAÇÃO: ${errorMsg || "Verifique sua conexão e tente novamente."}`);
       }
       setIsGenerating(false);
       setStatus('');
@@ -315,11 +315,28 @@ const App: React.FC = () => {
               )}
 
               {error && (
-                <div className="absolute top-6 left-1/2 -translate-x-1/2 z-[210] bg-brand-danger/20 border border-brand-danger/50 backdrop-blur-xl px-6 py-3 rounded-lg animate-in slide-in-from-top duration-500">
-                  <p className="text-[10px] font-black text-brand-danger uppercase tracking-[0.2em] flex items-center gap-3">
-                    <span className="w-2 h-2 bg-brand-danger rounded-full animate-pulse" />
-                    {error}
-                  </p>
+                <div className="absolute top-6 left-1/2 -translate-x-1/2 z-[210] bg-brand-danger/20 border border-brand-danger/50 backdrop-blur-xl px-6 py-4 rounded-xl animate-in slide-in-from-top duration-500 max-w-md w-full shadow-2xl">
+                  <div className="flex flex-col gap-4">
+                    <p className="text-[11px] font-black text-brand-danger uppercase tracking-[0.1em] flex items-start gap-3 leading-relaxed">
+                      <span className="w-2 h-2 bg-brand-danger rounded-full animate-pulse mt-1 flex-shrink-0" />
+                      {error}
+                    </p>
+                    {error.includes("COTA") ? (
+                      <button 
+                        onClick={handleOpenKeySelector}
+                        className="w-full py-3 bg-brand-danger text-white text-[10px] font-black uppercase tracking-widest rounded-lg hover:brightness-110 transition-all shadow-lg shadow-brand-danger/20"
+                      >
+                        CONECTAR MINHA CHAVE AGORA (GRÁTIS)
+                      </button>
+                    ) : (
+                      <button 
+                        onClick={handleGenerate}
+                        className="w-full py-3 bg-white/10 text-white text-[10px] font-black uppercase tracking-widest rounded-lg hover:bg-white/20 transition-all border border-white/10"
+                      >
+                        TENTAR NOVAMENTE
+                      </button>
+                    )}
+                  </div>
                 </div>
               )}
 
