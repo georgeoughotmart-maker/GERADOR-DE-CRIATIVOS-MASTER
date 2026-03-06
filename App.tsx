@@ -36,20 +36,37 @@ const App: React.FC = () => {
   }, [activeCategory]);
 
   useEffect(() => {
+    let attempts = 0;
     const checkKey = async () => {
       if (window.aistudio) {
         const hasKey = await window.aistudio.hasSelectedApiKey();
         setHasApiKey(hasKey);
+        console.log("[AI Studio] Sistema de chaves detectado e pronto.");
+      } else if (attempts < 10) {
+        attempts++;
+        setTimeout(checkKey, 500);
       }
     };
     checkKey();
   }, []);
 
   const handleOpenKeySelector = async () => {
+    console.log("[AI Studio] Tentando abrir seletor de chave...");
     if (window.aistudio) {
-      await window.aistudio.openSelectKey();
-      const hasKey = await window.aistudio.hasSelectedApiKey();
-      setHasApiKey(hasKey);
+      try {
+        await window.aistudio.openSelectKey();
+        const hasKey = await window.aistudio.hasSelectedApiKey();
+        setHasApiKey(hasKey);
+        if (hasKey) {
+          setError(null); // Limpa o erro se a chave for conectada
+        }
+      } catch (err) {
+        console.error("[AI Studio] Erro ao abrir seletor:", err);
+        setError("Não foi possível abrir o seletor de chaves. Por favor, tente novamente ou recarregue a página.");
+      }
+    } else {
+      console.warn("[AI Studio] window.aistudio não encontrado");
+      setError("O sistema de conexão de chaves ainda não está pronto. Por favor, aguarde alguns segundos e tente novamente.");
     }
   };
 
@@ -175,8 +192,12 @@ const App: React.FC = () => {
         <div className="flex items-center gap-8">
           {window.aistudio && (
             <button 
-              onClick={handleOpenKeySelector}
-              className={`px-6 py-2.5 rounded-full text-[10px] font-black tracking-widest transition-all duration-500 border flex items-center gap-3 ${
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                handleOpenKeySelector();
+              }}
+              className={`px-6 py-2.5 rounded-full text-[10px] font-black tracking-widest transition-all duration-500 border flex items-center gap-3 active:scale-95 ${
                 hasApiKey 
                 ? 'bg-brand-success/10 text-brand-success border-brand-success/30 hover:bg-brand-success/20' 
                 : 'bg-brand-primary/20 text-brand-primary border-brand-primary/50 hover:bg-brand-primary/30 animate-pulse shadow-[0_0_20px_rgba(255,0,255,0.2)]'
@@ -315,7 +336,7 @@ const App: React.FC = () => {
               )}
 
               {error && (
-                <div className="absolute top-6 left-1/2 -translate-x-1/2 z-[210] bg-brand-danger/20 border border-brand-danger/50 backdrop-blur-xl px-6 py-4 rounded-xl animate-in slide-in-from-top duration-500 max-w-md w-full shadow-2xl">
+                <div className="absolute top-6 left-1/2 -translate-x-1/2 z-[210] bg-brand-danger/20 border border-brand-danger/50 backdrop-blur-xl px-6 py-4 rounded-xl animate-in slide-in-from-top duration-500 max-w-md w-full shadow-2xl pointer-events-auto">
                   <div className="flex flex-col gap-4">
                     <p className="text-[11px] font-black text-brand-danger uppercase tracking-[0.1em] flex items-start gap-3 leading-relaxed">
                       <span className="w-2 h-2 bg-brand-danger rounded-full animate-pulse mt-1 flex-shrink-0" />
@@ -323,15 +344,23 @@ const App: React.FC = () => {
                     </p>
                     {error.includes("COTA") ? (
                       <button 
-                        onClick={handleOpenKeySelector}
-                        className="w-full py-3 bg-brand-danger text-white text-[10px] font-black uppercase tracking-widest rounded-lg hover:brightness-110 transition-all shadow-lg shadow-brand-danger/20"
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleOpenKeySelector();
+                        }}
+                        className="w-full py-3 bg-brand-danger text-white text-[10px] font-black uppercase tracking-widest rounded-lg hover:brightness-110 active:scale-[0.98] transition-all shadow-lg shadow-brand-danger/20 cursor-pointer relative z-[220]"
                       >
                         CONECTAR MINHA CHAVE AGORA (GRÁTIS)
                       </button>
                     ) : (
                       <button 
-                        onClick={handleGenerate}
-                        className="w-full py-3 bg-white/10 text-white text-[10px] font-black uppercase tracking-widest rounded-lg hover:bg-white/20 transition-all border border-white/10"
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleGenerate();
+                        }}
+                        className="w-full py-3 bg-white/10 text-white text-[10px] font-black uppercase tracking-widest rounded-lg hover:bg-white/20 active:scale-[0.98] transition-all border border-white/10 cursor-pointer relative z-[220]"
                       >
                         TENTAR NOVAMENTE
                       </button>
