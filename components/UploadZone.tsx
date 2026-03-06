@@ -51,7 +51,7 @@ const UploadZone: React.FC<UploadZoneProps> = ({
   };
 
   const isCompact = variant === 'compact';
-  const heightClass = isCompact ? 'h-36' : 'h-[440px]';
+  const heightClass = isCompact ? 'h-36' : 'min-h-[200px] lg:h-[440px]';
 
   return (
     <div 

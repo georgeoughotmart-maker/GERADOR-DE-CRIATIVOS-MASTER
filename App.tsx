@@ -1,11 +1,20 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { STYLES, SparklesIcon, DownloadIcon, RefreshIcon } from './constants';
 import { AdStyle, AdCopy, Category, LogoPosition, AdParameters } from './types';
 import Button from './components/Button';
 import StyleCard from './components/StyleCard';
 import UploadZone from './components/UploadZone';
 import TextOptions from './components/TextOptions';
-import { generateAdCreative, generateAdCopy } from './services/geminiService';
+import { generateAdCreative, generateAdCopy, isQuotaError } from './services/geminiService';
+
+declare global {
+  interface Window {
+    aistudio: {
+      hasSelectedApiKey: () => Promise<boolean>;
+      openSelectKey: () => Promise<void>;
+    };
+  }
+}
 
 const App: React.FC = () => {
   const [activeCategory, setActiveCategory] = useState<Category>('general');
@@ -16,22 +25,61 @@ const App: React.FC = () => {
   const [generatedCopy, setGeneratedCopy] = useState<AdCopy | null>(null);
   const [selectedStyle, setSelectedStyle] = useState<AdStyle>(AdStyle.CYBERPUNK);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [status, setStatus] = useState<string>('');
   const [error, setError] = useState<string | null>(null);
   const [customPrompt] = useState('');
   const [overlayText, setOverlayText] = useState('');
+  const [hasApiKey, setHasApiKey] = useState<boolean>(true);
 
   const filteredStyles = useMemo(() => {
     return STYLES.filter(s => s.category === activeCategory);
   }, [activeCategory]);
 
+  useEffect(() => {
+    const checkKey = async () => {
+      if (window.aistudio) {
+        const hasKey = await window.aistudio.hasSelectedApiKey();
+        setHasApiKey(hasKey);
+      }
+    };
+    checkKey();
+  }, []);
+
+  const handleOpenKeySelector = async () => {
+    if (window.aistudio) {
+      await window.aistudio.openSelectKey();
+      const hasKey = await window.aistudio.hasSelectedApiKey();
+      setHasApiKey(hasKey);
+    }
+  };
+
   const handleGenerate = async () => {
     if (!originalImage) return;
+    
+    // Verificação de chave de API em tempo real
+    if (window.aistudio) {
+      const hasKey = await window.aistudio.hasSelectedApiKey();
+      if (!hasKey) {
+        setError("Por favor, conecte sua chave de API no topo da tela para gerar criativos.");
+        setHasApiKey(false);
+        return;
+      }
+    }
+
     setIsGenerating(true);
+    setStatus('PREPARANDO AMBIENTE...');
+    
+    // Pequeno delay para garantir que a chave de API está pronta
+    await new Promise(resolve => setTimeout(resolve, 1000));
+
     setGeneratedImage(null);
     setGeneratedCopy(null);
     setError(null);
 
     try {
+      if (!originalImage.startsWith('data:image')) {
+        throw new Error("A imagem do produto parece estar corrompida. Por favor, tente enviar novamente.");
+      }
       const params: AdParameters = { 
         overlayText,
         lightingIntensity: 85,
@@ -39,17 +87,63 @@ const App: React.FC = () => {
         colorPalette: ''
       };
       
-      const [imageResult, copyResult] = await Promise.all([
-        generateAdCreative(originalImage, selectedStyle, customPrompt, logoImage || undefined, logoPosition, params),
-        generateAdCopy(originalImage, selectedStyle, customPrompt)
-      ]);
-      setGeneratedImage(imageResult);
-      setGeneratedCopy(copyResult);
-    } catch (err: any) {
-      console.error("Erro na geração:", err);
-      setError(err.message || "Ocorreu um erro inesperado ao gerar o criativo.");
-    } finally {
+      // Tentativa de geração de imagem
+      let imageResult = "";
+      try {
+        imageResult = await generateAdCreative(
+          originalImage, 
+          selectedStyle, 
+          customPrompt, 
+          logoImage || undefined, 
+          logoPosition, 
+          params,
+          (newStatus) => setStatus(newStatus)
+        );
+        setGeneratedImage(imageResult);
+        setStatus('GERANDO COPY PUBLICITÁRIO...');
+      } catch (imgErr: any) {
+        console.error("Erro na imagem:", imgErr);
+        throw new Error(`ERRO NA IMAGEM: ${imgErr.message}`);
+      }
+
+      // Tentativa de geração de copy
+      let copySuccess = false;
+      while (!copySuccess) {
+        try {
+          const copyResult = await generateAdCopy(originalImage, selectedStyle, customPrompt);
+          setGeneratedCopy(copyResult);
+          copySuccess = true;
+        } catch (copyErr: any) {
+          console.error("Erro no copy:", copyErr);
+          if (isQuotaError(copyErr)) {
+            setStatus('RECALIBRANDO COPY...');
+            await new Promise(resolve => setTimeout(resolve, 5000));
+          } else {
+            // Se for outro erro, apenas desistimos do copy para não travar a imagem
+            copySuccess = true;
+          }
+        }
+      }
+
       setIsGenerating(false);
+      setStatus('');
+    } catch (err: any) {
+      console.error("Erro global na geração:", err);
+      const errorMsg = err.message || "";
+      
+      if (errorMsg.includes("Requested entity was not found") || errorMsg.includes("API_KEY_INVALID") || errorMsg.includes("403")) {
+        setError("Sua chave de API parece inválida ou não tem permissão para este modelo. Conecte novamente.");
+        setHasApiKey(false);
+      } else if (isQuotaError(err)) {
+        // Em vez de mostrar erro, mantemos o estado de geração e apenas atualizamos o status
+        setStatus('ESTABILIZANDO CONEXÃO COM O NÚCLEO...');
+        // O loop infinito no geminiService cuidará da persistência
+        return; 
+      } else {
+        setError(errorMsg || "Ocorreu um erro inesperado ao gerar o criativo.");
+      }
+      setIsGenerating(false);
+      setStatus('');
     }
   };
 
@@ -91,6 +185,19 @@ const App: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-8">
+          {window.aistudio && (
+            <button 
+              onClick={handleOpenKeySelector}
+              className={`px-6 py-2.5 rounded-full text-[10px] font-black tracking-widest transition-all duration-500 border flex items-center gap-3 ${
+                hasApiKey 
+                ? 'bg-brand-success/10 text-brand-success border-brand-success/30 hover:bg-brand-success/20' 
+                : 'bg-brand-primary/20 text-brand-primary border-brand-primary/50 hover:bg-brand-primary/30 animate-pulse shadow-[0_0_20px_rgba(255,0,255,0.2)]'
+              }`}
+            >
+              <span className={`w-2 h-2 rounded-full ${hasApiKey ? 'bg-brand-success shadow-[0_0_10px_#00FF7F]' : 'bg-brand-primary shadow-[0_0_10px_#FF00FF] animate-ping'}`} />
+              {hasApiKey ? 'API CONECTADA' : 'CONECTAR API KEY'}
+            </button>
+          )}
           <div className="flex items-center gap-6 font-mono text-[9px] tracking-[0.2em] text-gray-500">
              <span className="flex items-center gap-3">STATUS <span className="w-2.5 h-2.5 bg-brand-success rounded-full animate-pulse shadow-[0_0_10px_#00FF7F]" /></span>
              <span className="w-px h-6 bg-white/10" />
@@ -99,30 +206,36 @@ const App: React.FC = () => {
         </div>
       </header>
 
-      <main className="flex-1 flex flex-col lg:flex-row p-4 lg:p-12 gap-8 lg:gap-12 max-w-[1920px] mx-auto w-full">
-        <aside className="w-full lg:w-[440px] space-y-10 flex-shrink-0">
-          <section className="space-y-6">
+      <main className="flex-1 flex flex-col lg:flex-row p-4 lg:p-12 gap-8 lg:gap-12 max-w-[1920px] mx-auto w-full relative z-10">
+        <aside className="w-full lg:w-[440px] space-y-10 flex-shrink-0 z-20 bg-white/[0.02] p-4 rounded-2xl border border-white/5">
+          <section className="space-y-8">
             <header className="flex items-center gap-4">
               <span className="font-mono text-xs text-brand-info font-black px-2 py-1 bg-brand-info/10 border border-brand-info/30">01</span>
               <h2 className="text-xs font-black tracking-[0.3em] uppercase text-white">RECURSOS VISUAIS</h2>
               <div className="h-[2px] flex-1 bg-gradient-to-r from-brand-info/50 to-transparent" />
             </header>
             
-            <div className="space-y-6">
-              <div className="neon-border-blue rounded-xl p-1 bg-black/40">
-                <UploadZone 
-                  onImageSelected={setOriginalImage} 
-                  currentImage={originalImage} 
-                  label="SUBMETER FOTO DO PRODUTO"
-                />
+            <div className="flex flex-col gap-8">
+              <div className="relative">
+                <div className="absolute -top-3 left-4 px-2 bg-brand-dark text-[9px] font-black text-brand-info tracking-widest z-10 uppercase">Foto do Produto</div>
+                <div className="neon-border-blue rounded-xl p-1 bg-black/40 overflow-hidden">
+                  <UploadZone 
+                    onImageSelected={setOriginalImage} 
+                    currentImage={originalImage} 
+                    label="SUBMETER FOTO DO PRODUTO"
+                  />
+                </div>
               </div>
               
-              <div className="glass-card p-4 lg:p-6 rounded-xl space-y-5 neon-border-purple bg-black/60">
-                <div className="flex justify-between items-center">
-                  <span className="text-[10px] font-black text-gray-300 uppercase tracking-widest">Logo da Marca</span>
-                  {logoImage && <button onClick={() => setLogoImage(null)} className="text-[10px] text-brand-danger font-black uppercase tracking-widest hover:brightness-150 transition-all underline underline-offset-4">Remover</button>}
+              <div className="relative">
+                <div className="absolute -top-3 left-4 px-2 bg-brand-dark text-[9px] font-black text-brand-secondary tracking-widest z-10 uppercase">Logo da Marca</div>
+                <div className="glass-card p-4 lg:p-6 rounded-xl space-y-5 neon-border-purple bg-black/60">
+                  <div className="flex justify-between items-center">
+                    <span className="text-[10px] font-black text-gray-300 uppercase tracking-widest opacity-50">Configurações de Logo</span>
+                    {logoImage && <button onClick={() => setLogoImage(null)} className="text-[10px] text-brand-danger font-black uppercase tracking-widest hover:brightness-150 transition-all underline underline-offset-4">Remover</button>}
+                  </div>
+                  <UploadZone onImageSelected={setLogoImage} currentImage={logoImage} variant="compact" />
                 </div>
-                <UploadZone onImageSelected={setLogoImage} currentImage={logoImage} variant="compact" />
               </div>
 
               <div className="glass-card p-4 lg:p-6 rounded-xl neon-border-blue bg-black/60 space-y-4">
@@ -227,8 +340,19 @@ const App: React.FC = () => {
                   <div className="w-48 lg:w-64 h-[2px] bg-white/10 mb-16 overflow-hidden relative">
                      <div className="absolute inset-0 bg-brand-primary animate-shimmer" style={{ width: '40%' }} />
                   </div>
-                  <p className="font-display text-3xl lg:text-5xl font-black tracking-[0.4em] gradient-text-neon animate-pulse">SINTETIZANDO</p>
-                  <p className="font-mono text-[9px] text-gray-400 mt-10 tracking-[0.4em] uppercase font-bold px-12">Isto pode levar até 20 segundos. Aguarde a resposta do núcleo.</p>
+                  <p className="font-display text-3xl lg:text-5xl font-black tracking-[0.4em] gradient-text-neon animate-pulse">{status || 'SINTETIZANDO'}</p>
+                  <p className="font-mono text-[9px] text-gray-400 mt-10 tracking-[0.4em] uppercase font-bold px-12">O estúdio está processando seu design de forma ilimitada. Em momentos de alta demanda, o sistema persistirá até obter o resultado. Por favor, aguarde.</p>
+                  
+                  <button 
+                    onClick={() => {
+                      setIsGenerating(false);
+                      setStatus('');
+                      setError(null);
+                    }}
+                    className="mt-12 text-[10px] font-black text-gray-500 hover:text-brand-danger transition-colors uppercase tracking-[0.3em] border border-white/10 px-6 py-2 rounded-full hover:bg-brand-danger/10"
+                  >
+                    Cancelar e Voltar
+                  </button>
                 </div>
               )}
             </div>

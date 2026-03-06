@@ -4,20 +4,14 @@ import react from '@vitejs/plugin-react';
 export default defineConfig({
   plugins: [react()],
   define: {
-    // Substitui process.env.GEMINI_API_KEY no código pelo valor da variável de ambiente durante o build
-    'process.env.GEMINI_API_KEY': JSON.stringify(process.env.GEMINI_API_KEY)
+    // Substitui as variáveis de ambiente no código durante o build
+    'process.env.GEMINI_API_KEY': JSON.stringify(process.env.GEMINI_API_KEY),
+    'process.env.API_KEY': JSON.stringify(process.env.API_KEY)
   },
   build: {
     outDir: 'dist',
     sourcemap: false,
-    minify: 'esbuild',
-    rollupOptions: {
-      output: {
-        manualChunks: {
-          'vendor': ['react', 'react-dom', '@google/genai']
-        }
-      }
-    }
+    minify: 'esbuild'
   },
   server: {
     port: 3000,

@@ -9,24 +9,79 @@ const getImageData = (dataUrl: string) => {
 
 const wait = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-const withRetry = async <T>(fn: () => Promise<T>, retries = 3, delay = 2000): Promise<T> => {
+const resizeImage = (base64Str: string, maxWidth = 1024, maxHeight = 1024): Promise<string> => {
+  return new Promise((resolve) => {
+    if (!base64Str || !base64Str.startsWith('data:image')) {
+      console.error("[IA] Imagem inválida fornecida para redimensionamento");
+      resolve(base64Str);
+      return;
+    }
+    const img = new Image();
+    img.src = base64Str;
+    img.onload = () => {
+      const canvas = document.createElement('canvas');
+      let width = img.width;
+      let height = img.height;
+
+      if (width > height) {
+        if (width > maxWidth) {
+          height *= maxWidth / width;
+          width = maxWidth;
+        }
+      } else {
+        if (height > maxHeight) {
+          width *= maxHeight / height;
+          height = maxHeight;
+        }
+      }
+
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      ctx?.drawImage(img, 0, 0, width, height);
+      resolve(canvas.toDataURL('image/jpeg', 0.8));
+    };
+    img.onerror = (e) => {
+      console.error("[IA] Erro ao carregar imagem para redimensionamento:", e);
+      resolve(base64Str);
+    };
+  });
+};
+
+const getApiKey = () => {
+  const key = process.env.API_KEY || process.env.GEMINI_API_KEY;
+  if (!key) {
+    throw new Error("Chave de API não encontrada. Por favor, conecte sua chave no topo da tela.");
+  }
+  return key;
+};
+
+export const isQuotaError = (error: any): boolean => {
+  const errorMsg = error?.message?.toLowerCase() || "";
+  return errorMsg.includes('429') || 
+         errorMsg.includes('resource_exhausted') || 
+         errorMsg.includes('quota') ||
+         errorMsg.includes('limit') ||
+         errorMsg.includes('overloaded') ||
+         errorMsg.includes('busy') ||
+         errorMsg.includes('demand') ||
+         errorMsg.includes('ocupado') ||
+         errorMsg.includes('processador') ||
+         errorMsg.includes('alta demanda') ||
+         errorMsg.includes('deadline_exceeded') ||
+         errorMsg.includes('quota_exceeded');
+};
+
+const withRetry = async <T>(fn: () => Promise<T>, retries = 3, delay = 5000, initialRetries = 3): Promise<T> => {
   try {
     return await fn();
   } catch (error: any) {
-    const errorMsg = error?.message?.toLowerCase() || "";
-    const isQuotaError = errorMsg.includes('429') || 
-                        errorMsg.includes('resource_exhausted') || 
-                        errorMsg.includes('quota') ||
-                        errorMsg.includes('limit');
-
-    if (isQuotaError && retries > 0) {
-      await wait(delay);
-      return withRetry(fn, retries - 1, delay * 2);
-    }
-    
-    // Removida a mensagem longa sobre Google/Cota/Faturamento
-    if (isQuotaError) {
-      throw new Error("SISTEMA OCUPADO: Alta demanda no processador. Tente novamente em alguns instantes.");
+    if (isQuotaError(error) && retries > 0) {
+      const jitter = Math.random() * 3000;
+      const waitTime = delay + jitter;
+      console.log(`[IA] Servidor ocupado ou limite de cota. Tentativa ${initialRetries - retries + 1}/${initialRetries}. Aguardando ${Math.round(waitTime/1000)}s...`);
+      await wait(waitTime);
+      return withRetry(fn, retries - 1, delay * 1.5, initialRetries);
     }
     
     throw error;
@@ -89,67 +144,110 @@ export const generateAdCreative = async (
   customInstructions?: string,
   logoBase64?: string,
   logoPosition: LogoPosition = LogoPosition.TOP_RIGHT,
-  params?: AdParameters
+  params?: AdParameters,
+  onStatusUpdate?: (status: string) => void
 ): Promise<string> => {
-  return withRetry(async () => {
-    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
-    const modelName = 'gemini-2.5-flash-image';
-    
-    const productInfo = getImageData(productBase64);
-    const parts: any[] = [{ inlineData: { mimeType: productInfo.mimeType, data: productInfo.data } }];
+  const models = [
+    'gemini-2.5-flash-image',
+    'gemini-3.1-flash-image-preview',
+    'gemini-3-pro-image-preview'
+  ];
+  
+  let cycleCount = 0;
 
-    if (logoBase64) {
-      const logoInfo = getImageData(logoBase64);
-      parts.push({ inlineData: { mimeType: logoInfo.mimeType, data: logoInfo.data } });
-    }
+  onStatusUpdate?.('OTIMIZANDO RECURSOS VISUAIS...');
+  const optimizedProduct = await resizeImage(productBase64);
+  const optimizedLogo = logoBase64 ? await resizeImage(logoBase64, 512, 512) : null;
 
-    const stylePrompt = getPromptForStyle(style);
-    const overlayTextPrompt = params?.overlayText ? `IMPORTANT: Render the text "${params.overlayText}" into the scene with high-end typography.` : "";
-    
-    const finalPrompt = `
-      You are a world-class advertising photographer and digital artist. 
-      I am providing you with a product image ${logoBase64 ? "and a brand logo" : ""}.
-      Your task is to generate a new, high-end advertising creative based on this product.
+  const stylePrompt = getPromptForStyle(style);
+  const overlayTextPrompt = params?.overlayText ? `IMPORTANT: Render the text "${params.overlayText}" into the scene with high-end typography.` : "";
+  const finalPrompt = `
+    Advertising photography for a product.
+    PRODUCT DESCRIPTION: The product shown in the image.
+    STYLE: ${stylePrompt}
+    ${overlayTextPrompt}
+    ${customInstructions ? `INSTRUCTIONS: ${customInstructions}` : ""}
+    COMPOSITION: The product is the hero, centered, professional studio lighting, commercial grade.
+    ${logoBase64 ? `BRANDING: Place the logo at the ${logoPosition}.` : ""}
+  `;
+
+  while (true) { // Loop infinito para persistência total
+    for (const modelName of models) {
+      const displayModel = modelName.includes('3.1') ? 'ULTRA' : modelName.includes('pro') ? 'PRO' : 'FLASH';
+      onStatusUpdate?.(`SINTETIZANDO COM NÚCLEO ${displayModel}...`);
       
-      STYLE DIRECTION: ${stylePrompt}
-      ${overlayTextPrompt}
-      ${customInstructions ? `USER INSTRUCTIONS: ${customInstructions}` : ""}
-      
-      SCENE COMPOSITION:
-      - The product from the first image must be the central focus.
-      - Completely reimagine the background and environment to match the STYLE DIRECTION perfectly.
-      - Use cinematic lighting, professional studio atmospherics, and high-end textures.
-      ${logoBase64 ? `- Seamlessly incorporate the brand logo from the second image at the ${logoPosition}.` : ""}
-      
-      OUTPUT: A single, high-resolution (4K), commercial-grade advertising image.
-    `;
+      try {
+        return await withRetry(async () => {
+          const apiKey = getApiKey();
+          const ai = new GoogleGenAI({ apiKey });
+          
+          const productInfo = getImageData(optimizedProduct);
+          const parts: any[] = [{ inlineData: { mimeType: productInfo.mimeType, data: productInfo.data } }];
 
-    parts.push({ text: finalPrompt });
+          if (optimizedLogo) {
+            const logoInfo = getImageData(optimizedLogo);
+            parts.push({ inlineData: { mimeType: logoInfo.mimeType, data: logoInfo.data } });
+          }
 
-    const response = await ai.models.generateContent({
-      model: modelName,
-      contents: { parts: parts }
-    });
+          parts.push({ text: finalPrompt });
 
-    const candidate = response.candidates?.[0];
-    if (!candidate?.content?.parts) throw new Error("A IA não retornou uma resposta válida.");
+          const config: any = {
+            imageConfig: {
+              aspectRatio: "1:1"
+            }
+          };
 
-    let textResponse = "";
-    for (const part of candidate.content.parts) {
-      if (part.inlineData?.data) {
-        return `data:${part.inlineData.mimeType || 'image/png'};base64,${part.inlineData.data}`;
+          // imageSize is only supported for gemini-3 series and gemini-3.1-flash-image-preview
+          if (modelName.includes('gemini-3')) {
+            config.imageConfig.imageSize = "1K";
+          }
+
+          const response = await ai.models.generateContent({
+            model: modelName,
+            contents: { parts: parts },
+            config: config
+          });
+
+          console.log(`[IA] Resposta recebida do modelo ${modelName}:`, response);
+
+          const candidate = response.candidates?.[0];
+          
+          if (candidate?.finishReason && candidate.finishReason !== 'STOP') {
+            const reason = candidate.finishReason;
+            console.warn(`[IA] Modelo ${modelName} terminou com motivo: ${reason}`);
+            if (reason === 'SAFETY') throw new Error("A IA recusou a geração por motivos de segurança.");
+            throw new Error(`Interrompido: ${reason}`);
+          }
+
+          if (candidate?.content?.parts) {
+            for (const part of candidate.content.parts) {
+              if (part.inlineData?.data) {
+                console.log(`[IA] Imagem gerada com sucesso pelo modelo ${modelName}.`);
+                return `data:${part.inlineData.mimeType || 'image/png'};base64,${part.inlineData.data}`;
+              }
+            }
+          }
+
+          console.error(`[IA] Modelo ${modelName} não retornou partes de imagem.`, candidate);
+          throw new Error("O núcleo de IA não gerou o arquivo de imagem.");
+        }, 5, 5000, 5);
+      } catch (error: any) {
+        console.error(`[IA] Erro no modelo ${modelName}:`, error);
+        
+        if (!isQuotaError(error)) {
+          // Se for erro de segurança ou outro erro fatal, não adianta tentar o mesmo modelo
+          onStatusUpdate?.(`ERRO NO NÚCLEO ${displayModel}. TROCANDO...`);
+        } else {
+          onStatusUpdate?.(`RECALIBRANDO NÚCLEO ${displayModel}...`);
+        }
+        await wait(2000);
       }
-      if (part.text) {
-        textResponse += part.text;
-      }
     }
 
-    if (textResponse) {
-      throw new Error(`A IA recusou a geração: ${textResponse}`);
-    }
-
-    throw new Error("Erro na síntese da imagem: Nenhuma imagem gerada.");
-  });
+    cycleCount++;
+    onStatusUpdate?.(`OTIMIZANDO CICLO DE SÍNTESE (${cycleCount + 1})...`);
+    await wait(8000);
+  }
 };
 
 export const generateAdCopy = async (
@@ -158,7 +256,8 @@ export const generateAdCopy = async (
   customInstructions?: string
 ): Promise<AdCopy> => {
   return withRetry(async () => {
-    const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+    const apiKey = getApiKey();
+    const ai = new GoogleGenAI({ apiKey });
     const modelName = 'gemini-3-flash-preview';
     
     const imgInfo = getImageData(imageBase64);
@@ -190,5 +289,5 @@ export const generateAdCopy = async (
     } catch {
       return { titles: ["Inovação Pura"], descriptions: ["O futuro chegou."] };
     }
-  });
+  }, 10, 5000, 10);
 };
