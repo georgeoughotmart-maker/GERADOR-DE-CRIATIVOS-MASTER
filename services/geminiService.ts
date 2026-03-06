@@ -147,14 +147,8 @@ export const generateAdCreative = async (
   params?: AdParameters,
   onStatusUpdate?: (status: string) => void
 ): Promise<string> => {
-  const models = [
-    'gemini-2.5-flash-image',
-    'gemini-3.1-flash-image-preview',
-    'gemini-3-pro-image-preview'
-  ];
+  const modelName = 'gemini-2.5-flash-image';
   
-  let cycleCount = 0;
-
   onStatusUpdate?.('OTIMIZANDO RECURSOS VISUAIS...');
   const optimizedProduct = await resizeImage(productBase64);
   const optimizedLogo = logoBase64 ? await resizeImage(logoBase64, 512, 512) : null;
@@ -171,83 +165,57 @@ export const generateAdCreative = async (
     ${logoBase64 ? `BRANDING: Place the logo at the ${logoPosition}.` : ""}
   `;
 
-  while (true) { // Loop infinito para persistência total
-    for (const modelName of models) {
-      const displayModel = modelName.includes('3.1') ? 'ULTRA' : modelName.includes('pro') ? 'PRO' : 'FLASH';
-      onStatusUpdate?.(`SINTETIZANDO COM NÚCLEO ${displayModel}...`);
-      
-      try {
-        return await withRetry(async () => {
-          const apiKey = getApiKey();
-          const ai = new GoogleGenAI({ apiKey });
-          
-          const productInfo = getImageData(optimizedProduct);
-          const parts: any[] = [{ inlineData: { mimeType: productInfo.mimeType, data: productInfo.data } }];
+  onStatusUpdate?.(`SINTETIZANDO COM NÚCLEO FLASH...`);
+  
+  return await withRetry(async () => {
+    const apiKey = getApiKey();
+    const ai = new GoogleGenAI({ apiKey });
+    
+    const productInfo = getImageData(optimizedProduct);
+    const parts: any[] = [{ inlineData: { mimeType: productInfo.mimeType, data: productInfo.data } }];
 
-          if (optimizedLogo) {
-            const logoInfo = getImageData(optimizedLogo);
-            parts.push({ inlineData: { mimeType: logoInfo.mimeType, data: logoInfo.data } });
-          }
+    if (optimizedLogo) {
+      const logoInfo = getImageData(optimizedLogo);
+      parts.push({ inlineData: { mimeType: logoInfo.mimeType, data: logoInfo.data } });
+    }
 
-          parts.push({ text: finalPrompt });
+    parts.push({ text: finalPrompt });
 
-          const config: any = {
-            imageConfig: {
-              aspectRatio: "1:1"
-            }
-          };
+    const config: any = {
+      imageConfig: {
+        aspectRatio: "1:1"
+      }
+    };
 
-          // imageSize is only supported for gemini-3 series and gemini-3.1-flash-image-preview
-          if (modelName.includes('gemini-3')) {
-            config.imageConfig.imageSize = "1K";
-          }
+    const response = await ai.models.generateContent({
+      model: modelName,
+      contents: { parts: parts },
+      config: config
+    });
 
-          const response = await ai.models.generateContent({
-            model: modelName,
-            contents: { parts: parts },
-            config: config
-          });
+    console.log(`[IA] Resposta recebida do modelo ${modelName}:`, response);
 
-          console.log(`[IA] Resposta recebida do modelo ${modelName}:`, response);
+    const candidate = response.candidates?.[0];
+    
+    if (candidate?.finishReason && candidate.finishReason !== 'STOP') {
+      const reason = candidate.finishReason;
+      console.warn(`[IA] Modelo ${modelName} terminou com motivo: ${reason}`);
+      if (reason === 'SAFETY') throw new Error("A IA recusou a geração por motivos de segurança.");
+      throw new Error(`Interrompido: ${reason}`);
+    }
 
-          const candidate = response.candidates?.[0];
-          
-          if (candidate?.finishReason && candidate.finishReason !== 'STOP') {
-            const reason = candidate.finishReason;
-            console.warn(`[IA] Modelo ${modelName} terminou com motivo: ${reason}`);
-            if (reason === 'SAFETY') throw new Error("A IA recusou a geração por motivos de segurança.");
-            throw new Error(`Interrompido: ${reason}`);
-          }
-
-          if (candidate?.content?.parts) {
-            for (const part of candidate.content.parts) {
-              if (part.inlineData?.data) {
-                console.log(`[IA] Imagem gerada com sucesso pelo modelo ${modelName}.`);
-                return `data:${part.inlineData.mimeType || 'image/png'};base64,${part.inlineData.data}`;
-              }
-            }
-          }
-
-          console.error(`[IA] Modelo ${modelName} não retornou partes de imagem.`, candidate);
-          throw new Error("O núcleo de IA não gerou o arquivo de imagem.");
-        }, 5, 5000, 5);
-      } catch (error: any) {
-        console.error(`[IA] Erro no modelo ${modelName}:`, error);
-        
-        if (!isQuotaError(error)) {
-          // Se for erro de segurança ou outro erro fatal, não adianta tentar o mesmo modelo
-          onStatusUpdate?.(`ERRO NO NÚCLEO ${displayModel}. TROCANDO...`);
-        } else {
-          onStatusUpdate?.(`RECALIBRANDO NÚCLEO ${displayModel}...`);
+    if (candidate?.content?.parts) {
+      for (const part of candidate.content.parts) {
+        if (part.inlineData?.data) {
+          console.log(`[IA] Imagem gerada com sucesso pelo modelo ${modelName}.`);
+          return `data:${part.inlineData.mimeType || 'image/png'};base64,${part.inlineData.data}`;
         }
-        await wait(2000);
       }
     }
 
-    cycleCount++;
-    onStatusUpdate?.(`OTIMIZANDO CICLO DE SÍNTESE (${cycleCount + 1})...`);
-    await wait(8000);
-  }
+    console.error(`[IA] Modelo ${modelName} não retornou partes de imagem.`, candidate);
+    throw new Error("O núcleo de IA não gerou o arquivo de imagem.");
+  }, 5, 5000, 5);
 };
 
 export const generateAdCopy = async (

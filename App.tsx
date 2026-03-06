@@ -5,7 +5,7 @@ import Button from './components/Button';
 import StyleCard from './components/StyleCard';
 import UploadZone from './components/UploadZone';
 import TextOptions from './components/TextOptions';
-import { generateAdCreative, generateAdCopy, isQuotaError } from './services/geminiService';
+import { generateAdCreative, generateAdCopy } from './services/geminiService';
 
 declare global {
   interface Window {
@@ -107,22 +107,12 @@ const App: React.FC = () => {
       }
 
       // Tentativa de geração de copy
-      let copySuccess = false;
-      while (!copySuccess) {
-        try {
-          const copyResult = await generateAdCopy(originalImage, selectedStyle, customPrompt);
-          setGeneratedCopy(copyResult);
-          copySuccess = true;
-        } catch (copyErr: any) {
-          console.error("Erro no copy:", copyErr);
-          if (isQuotaError(copyErr)) {
-            setStatus('RECALIBRANDO COPY...');
-            await new Promise(resolve => setTimeout(resolve, 5000));
-          } else {
-            // Se for outro erro, apenas desistimos do copy para não travar a imagem
-            copySuccess = true;
-          }
-        }
+      try {
+        const copyResult = await generateAdCopy(originalImage, selectedStyle, customPrompt);
+        setGeneratedCopy(copyResult);
+      } catch (copyErr: any) {
+        console.error("Erro no copy:", copyErr);
+        // Se falhar o copy, não travamos a experiência, apenas mostramos um aviso no console
       }
 
       setIsGenerating(false);
@@ -134,11 +124,6 @@ const App: React.FC = () => {
       if (errorMsg.includes("Requested entity was not found") || errorMsg.includes("API_KEY_INVALID") || errorMsg.includes("403")) {
         setError("Sua chave de API parece inválida ou não tem permissão para este modelo. Conecte novamente.");
         setHasApiKey(false);
-      } else if (isQuotaError(err)) {
-        // Em vez de mostrar erro, mantemos o estado de geração e apenas atualizamos o status
-        setStatus('ESTABILIZANDO CONEXÃO COM O NÚCLEO...');
-        // O loop infinito no geminiService cuidará da persistência
-        return; 
       } else {
         setError(errorMsg || "Ocorreu um erro inesperado ao gerar o criativo.");
       }
