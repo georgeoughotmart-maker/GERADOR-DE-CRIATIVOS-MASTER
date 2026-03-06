@@ -165,57 +165,50 @@ export const generateAdCreative = async (
     ${logoBase64 ? `BRANDING: Place the logo at the ${logoPosition}.` : ""}
   `;
 
-  onStatusUpdate?.(`SINTETIZANDO COM NÚCLEO FLASH...`);
+  onStatusUpdate?.(`GERANDO CRIATIVO...`);
   
   return await withRetry(async () => {
     const apiKey = getApiKey();
     const ai = new GoogleGenAI({ apiKey });
     
     const productInfo = getImageData(optimizedProduct);
-    const parts: any[] = [{ inlineData: { mimeType: productInfo.mimeType, data: productInfo.data } }];
+    const parts: any[] = [
+      { inlineData: { mimeType: productInfo.mimeType, data: productInfo.data } },
+      { text: finalPrompt }
+    ];
 
     if (optimizedLogo) {
       const logoInfo = getImageData(optimizedLogo);
       parts.push({ inlineData: { mimeType: logoInfo.mimeType, data: logoInfo.data } });
     }
 
-    parts.push({ text: finalPrompt });
-
-    const config: any = {
-      imageConfig: {
-        aspectRatio: "1:1"
-      }
-    };
-
     const response = await ai.models.generateContent({
       model: modelName,
       contents: { parts: parts },
-      config: config
+      config: {
+        imageConfig: {
+          aspectRatio: "1:1"
+        }
+      }
     });
-
-    console.log(`[IA] Resposta recebida do modelo ${modelName}:`, response);
 
     const candidate = response.candidates?.[0];
     
     if (candidate?.finishReason && candidate.finishReason !== 'STOP') {
-      const reason = candidate.finishReason;
-      console.warn(`[IA] Modelo ${modelName} terminou com motivo: ${reason}`);
-      if (reason === 'SAFETY') throw new Error("A IA recusou a geração por motivos de segurança.");
-      throw new Error(`Interrompido: ${reason}`);
+      if (candidate.finishReason === 'SAFETY') throw new Error("A IA recusou a geração por segurança.");
+      throw new Error(`Erro: ${candidate.finishReason}`);
     }
 
     if (candidate?.content?.parts) {
       for (const part of candidate.content.parts) {
         if (part.inlineData?.data) {
-          console.log(`[IA] Imagem gerada com sucesso pelo modelo ${modelName}.`);
           return `data:${part.inlineData.mimeType || 'image/png'};base64,${part.inlineData.data}`;
         }
       }
     }
 
-    console.error(`[IA] Modelo ${modelName} não retornou partes de imagem.`, candidate);
-    throw new Error("O núcleo de IA não gerou o arquivo de imagem.");
-  }, 5, 5000, 5);
+    throw new Error("Falha ao gerar imagem.");
+  }, 2, 2000, 2);
 };
 
 export const generateAdCopy = async (
@@ -257,5 +250,5 @@ export const generateAdCopy = async (
     } catch {
       return { titles: ["Inovação Pura"], descriptions: ["O futuro chegou."] };
     }
-  }, 10, 5000, 10);
+  }, 2, 2000, 2);
 };
