@@ -36,13 +36,24 @@ const App: React.FC = () => {
   }, [activeCategory]);
 
   useEffect(() => {
+    // Verifica se a chave já está no ambiente
+    if (process.env.API_KEY) {
+      setHasApiKey(true);
+      console.log("[AI Studio] Chave de API detectada via ambiente.");
+    }
+
     let attempts = 0;
     const checkKey = async () => {
-      if (window.aistudio) {
-        const hasKey = await window.aistudio.hasSelectedApiKey();
-        setHasApiKey(hasKey);
-        console.log("[AI Studio] Sistema de chaves detectado e pronto.");
-      } else if (attempts < 10) {
+      const aiStudio = (window as any).aistudio;
+      if (aiStudio) {
+        try {
+          const hasKey = await aiStudio.hasSelectedApiKey();
+          setHasApiKey(hasKey || !!process.env.API_KEY);
+          console.log("[AI Studio] Sistema de chaves pronto. Status:", hasKey);
+        } catch (e) {
+          console.error("[AI Studio] Erro ao verificar chave:", e);
+        }
+      } else if (attempts < 20) { // Aumentado para 20 tentativas (10 segundos)
         attempts++;
         setTimeout(checkKey, 500);
       }
@@ -52,21 +63,22 @@ const App: React.FC = () => {
 
   const handleOpenKeySelector = async () => {
     console.log("[AI Studio] Tentando abrir seletor de chave...");
-    if (window.aistudio) {
-      try {
-        await window.aistudio.openSelectKey();
-        const hasKey = await window.aistudio.hasSelectedApiKey();
-        setHasApiKey(hasKey);
-        if (hasKey) {
-          setError(null); // Limpa o erro se a chave for conectada
-        }
-      } catch (err) {
-        console.error("[AI Studio] Erro ao abrir seletor:", err);
-        setError("Não foi possível abrir o seletor de chaves. Por favor, tente novamente ou recarregue a página.");
+    const aiStudio = (window as any).aistudio;
+    
+    try {
+      if (aiStudio && typeof aiStudio.openSelectKey === 'function') {
+        await aiStudio.openSelectKey();
+        // Após abrir, assumimos que o usuário pode ter selecionado
+        const hasKey = await aiStudio.hasSelectedApiKey();
+        setHasApiKey(hasKey || !!process.env.API_KEY);
+        setError(null);
+      } else {
+        console.warn("[AI Studio] window.aistudio não encontrado ou incompleto");
+        setError("O sistema de conexão da Google está demorando para carregar. Por favor, recarregue a página (F5) e aguarde 5 segundos.");
       }
-    } else {
-      console.warn("[AI Studio] window.aistudio não encontrado");
-      setError("O sistema de conexão de chaves ainda não está pronto. Por favor, aguarde alguns segundos e tente novamente.");
+    } catch (err) {
+      console.error("[AI Studio] Erro crítico ao abrir seletor:", err);
+      setError("Não foi possível iniciar a conexão. Tente recarregar a página.");
     }
   };
 
@@ -74,13 +86,21 @@ const App: React.FC = () => {
     if (!originalImage) return;
     
     // Verificação de chave de API em tempo real
-    if (window.aistudio) {
-      const hasKey = await window.aistudio.hasSelectedApiKey();
-      if (!hasKey) {
-        setError("Por favor, conecte sua chave de API no topo da tela para gerar criativos.");
-        setHasApiKey(false);
-        return;
+    const aiStudio = (window as any).aistudio;
+    if (aiStudio) {
+      try {
+        const hasKey = await aiStudio.hasSelectedApiKey();
+        if (!hasKey && !process.env.API_KEY) {
+          setError("Por favor, conecte sua chave de API no topo da tela para gerar criativos.");
+          setHasApiKey(false);
+          return;
+        }
+      } catch (e) {
+        console.warn("[AI Studio] Erro ao verificar chave em tempo real:", e);
       }
+    } else if (!process.env.API_KEY) {
+      setError("O sistema de chaves da Google ainda não carregou. Por favor, aguarde e tente novamente.");
+      return;
     }
 
     setIsGenerating(true);
