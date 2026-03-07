@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { Zap, Settings } from 'lucide-react';
 import { STYLES, SparklesIcon, DownloadIcon, RefreshIcon } from './constants';
 import { AdStyle, AdCopy, Category, LogoPosition, AdParameters } from './types';
 import Button from './components/Button';
@@ -29,53 +30,87 @@ const App: React.FC = () => {
   const [error, setError] = useState<React.ReactNode | null>(null);
   const [customPrompt] = useState('');
   const [overlayText, setOverlayText] = useState('');
-  // const [isUsingPersonalKey, setIsUsingPersonalKey] = useState<boolean>(false);
+  const [hasPersonalKey, setHasPersonalKey] = useState<boolean>(false);
+  const [isPremiumMode, setIsPremiumMode] = useState(false);
 
   const filteredStyles = useMemo(() => {
     return STYLES.filter(s => s.category === activeCategory);
   }, [activeCategory]);
 
   useEffect(() => {
-    // Lógica de verificação de chave removida para simplificar a experiência do usuário
+    const checkKey = async () => {
+      if (window.aistudio) {
+        try {
+          const hasKey = await window.aistudio.hasSelectedApiKey();
+          setHasPersonalKey(hasKey);
+        } catch (e) {
+          console.warn("Erro ao verificar chave:", e);
+        }
+      }
+    };
+    checkKey();
+    const interval = setInterval(checkKey, 5000);
+    return () => clearInterval(interval);
   }, []);
 
   const handleGenerate = async () => {
     if (!originalImage) return;
     
-    // Verificação de chave de API removida para permitir uso ilimitado via fallback
-    /*
+    setIsGenerating(true);
+    setStatus('INICIANDO ENGINE...');
+    setError(null);
+    
+    // Check if we need a key for high demand
     const aiStudio = (window as any).aistudio;
     if (aiStudio) {
       try {
         const hasKey = await aiStudio.hasSelectedApiKey();
-        if (!hasKey && !process.env.API_KEY) {
-          setError("Por favor, conecte sua chave de API no topo da tela para gerar criativos.");
-          setIsUsingPersonalKey(false);
-          return;
+        if (!hasKey && !process.env.GEMINI_API_KEY) {
+           setError(
+             <div className="space-y-4 p-4 bg-brand-primary/10 border border-brand-primary/30 rounded-2xl">
+               <p className="font-black text-brand-primary flex items-center gap-2">
+                 <Zap size={18} className="fill-current" />
+                 CHAVE DE API NECESSÁRIA (PROJETO PAGO)
+               </p>
+               <p className="text-sm text-gray-300 leading-relaxed">
+                 Para gerar imagens, o Google exige uma chave de um **Projeto com Faturamento Ativo** (Paid Project).
+                 <br/><br/>
+                 Se você vir a mensagem "No Paid Project", você precisa configurar o faturamento no seu console do Google Cloud.
+                 <br/><br/>
+                 <a 
+                   href="https://ai.google.dev/gemini-api/docs/billing" 
+                   target="_blank" 
+                   rel="noopener noreferrer"
+                   className="text-brand-primary underline hover:text-white transition-colors font-bold"
+                 >
+                   Ver Documentação de Faturamento →
+                 </a>
+               </p>
+               <button 
+                 onClick={async () => {
+                   await aiStudio.openSelectKey();
+                   setError(null);
+                   setTimeout(() => handleGenerate(), 500);
+                 }}
+                 className="w-full py-4 bg-brand-primary text-white font-black rounded-xl uppercase tracking-widest text-[11px] hover:scale-[1.02] transition-transform shadow-[0_0_20px_rgba(255,0,255,0.3)]"
+               >
+                 TENTAR CONECTAR CHAVE NOVAMENTE
+               </button>
+             </div>
+           );
+           setIsGenerating(false);
+           return;
         }
       } catch (e) {
-        console.warn("[AI Studio] Erro ao verificar chave em tempo real:", e);
+        console.warn("Erro na verificação de chave:", e);
       }
-    } else if (!process.env.API_KEY) {
-      setError("O sistema de chaves da Google ainda não carregou. Por favor, aguarde e tente novamente.");
-      return;
     }
-    */
-
-    setIsGenerating(true);
-    setStatus('PREPARANDO AMBIENTE...');
-    
-    // Pequeno delay para garantir que a chave de API está pronta
-    await new Promise(resolve => setTimeout(resolve, 1000));
-
-    setGeneratedImage(null);
-    setGeneratedCopy(null);
-    setError(null);
 
     try {
       if (!originalImage.startsWith('data:image')) {
-        throw new Error("A imagem do produto parece estar corrompida. Por favor, tente enviar novamente.");
+        throw new Error("A imagem do produto parece estar corrompida.");
       }
+      
       const params: AdParameters = { 
         overlayText,
         lightingIntensity: 85,
@@ -93,13 +128,21 @@ const App: React.FC = () => {
           logoImage || undefined, 
           logoPosition, 
           params,
-          (newStatus) => setStatus(newStatus)
+          (newStatus) => setStatus(newStatus),
+          isPremiumMode
         );
         setGeneratedImage(imageResult);
         setStatus('GERANDO COPY PUBLICITÁRIO...');
       } catch (imgErr: any) {
         console.error("Erro na imagem:", imgErr);
-        throw new Error(`ERRO NA IMAGEM: ${imgErr.message}`);
+        const errorMsg = imgErr.message || "";
+        
+        if (errorMsg.includes("429") || errorMsg.includes("quota") || errorMsg.includes("RESOURCE_EXHAUSTED")) {
+          setStatus('SISTEMA OCUPADO... REFILANDO...');
+          await new Promise(resolve => setTimeout(resolve, 3000));
+          return handleGenerate();
+        }
+        throw imgErr;
       }
 
       // Tentativa de geração de copy
@@ -108,35 +151,80 @@ const App: React.FC = () => {
         setGeneratedCopy(copyResult);
       } catch (copyErr: any) {
         console.error("Erro no copy:", copyErr);
-        // Se falhar o copy, não travamos a experiência, apenas mostramos um aviso no console
       }
 
       setIsGenerating(false);
       setStatus('');
     } catch (err: any) {
       console.error("Erro global na geração:", err);
-      const errorMsg = err.message || "";
       
-      // Se for erro de cota, tentamos novamente automaticamente após um delay sem mostrar o erro "ALTA DEMANDA"
-      if (errorMsg.includes("429") || errorMsg.includes("quota") || errorMsg.includes("RESOURCE_EXHAUSTED")) {
-        setStatus('SISTEMA OCUPADO... REFILANDO...');
-        await new Promise(resolve => setTimeout(resolve, 5000));
-        return handleGenerate();
+      // Extract error message from various possible formats
+      let errorMsg = "";
+      if (typeof err === 'string') {
+        errorMsg = err;
+      } else if (err.message) {
+        errorMsg = err.message;
+      } else {
+        try {
+          errorMsg = JSON.stringify(err);
+        } catch {
+          errorMsg = "Erro desconhecido";
+        }
       }
+      
+      const isAuthError = errorMsg.includes("Requested entity was not found") || 
+                          errorMsg.includes("API_KEY_INVALID") || 
+                          errorMsg.includes("401") ||
+                          errorMsg.includes("invalid key");
 
-      if (errorMsg.includes("Requested entity was not found") || errorMsg.includes("API_KEY_INVALID") || errorMsg.includes("403")) {
+      const isPermissionError = errorMsg.includes("403") || 
+                                errorMsg.includes("PERMISSION_DENIED") || 
+                                errorMsg.includes("permission") ||
+                                errorMsg.includes("Paid Project");
+
+      if (isAuthError || isPermissionError) {
         setError(
-          <div className="space-y-4">
-            <p className="font-black text-brand-danger">❌ ERRO DE CONEXÃO</p>
-            <p className="text-sm text-gray-300 leading-relaxed">
-              Ocorreu um erro ao processar sua solicitação. O sistema tentará novamente de forma automática.
+          <div className="space-y-4 p-4 bg-brand-primary/10 border border-brand-primary/30 rounded-2xl">
+            <p className="font-black text-brand-primary flex items-center gap-2">
+              <Zap size={18} className="fill-current" />
+              {isPermissionError ? 'ERRO DE PERMISSÃO (PROJETO PAGO)' : 'ERRO DE AUTENTICAÇÃO'}
             </p>
+            <p className="text-sm text-gray-300 leading-relaxed">
+              {isPermissionError ? (
+                <>
+                  O Google negou o acesso (403). Isso geralmente acontece porque o modelo de imagem exige um **Projeto com Faturamento Ativo** (Paid Project).
+                  <br/><br/>
+                  Mesmo na cota gratuita, o faturamento deve estar configurado no seu console.
+                </>
+              ) : (
+                "Sua chave de API parece inválida ou expirou. Por favor, reconecte para continuar."
+              )}
+            </p>
+            <div className="flex flex-col gap-2">
+              {isPermissionError && (
+                <a 
+                  href="https://ai.google.dev/gemini-api/docs/billing" 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="text-center py-2 text-[10px] text-brand-primary underline hover:text-white transition-colors font-bold uppercase tracking-widest"
+                >
+                  Como ativar o faturamento →
+                </a>
+              )}
+              <button 
+                onClick={async () => {
+                  await (window as any).aistudio?.openSelectKey();
+                  setError(null);
+                }}
+                className="w-full py-4 bg-brand-primary text-white font-black rounded-xl uppercase tracking-widest text-[11px] hover:scale-[1.02] transition-transform"
+              >
+                CONFIGURAR CHAVE API
+              </button>
+            </div>
           </div>
         );
-        // Tenta novamente após um tempo
-        setTimeout(() => handleGenerate(), 10000);
       } else {
-        setError(`ERRO NA GERAÇÃO: ${errorMsg || "Verifique sua conexão e tente novamente."}`);
+        setError(`ERRO CRÍTICO: ${errorMsg || "Falha na comunicação com o servidor."}`);
       }
       setIsGenerating(false);
       setStatus('');
@@ -180,8 +268,22 @@ const App: React.FC = () => {
           </nav>
         </div>
 
-        <div className="flex items-center gap-8">
-          {/* Botão de chave removido para simplificar a interface conforme solicitado */}
+        <div className="flex flex-col items-end gap-1">
+          <button 
+            onClick={async () => await (window as any).aistudio?.openSelectKey()}
+            className={`flex items-center gap-3 px-6 py-2.5 rounded-full border transition-all duration-500 group ${hasPersonalKey ? 'bg-brand-success/10 border-brand-success/30 text-brand-success' : 'bg-brand-primary/10 border-brand-primary/30 text-brand-primary shadow-[0_0_20px_rgba(255,0,255,0.1)] hover:shadow-[0_0_30px_rgba(255,0,255,0.2)] hover:scale-105'}`}
+          >
+            <Settings size={14} className={hasPersonalKey ? '' : 'animate-spin-slow'} />
+            <div className={`w-2 h-2 rounded-full animate-pulse ${hasPersonalKey ? 'bg-brand-success' : 'bg-brand-primary'}`} />
+            <span className="text-[10px] font-black uppercase tracking-[0.2em]">
+              {hasPersonalKey ? 'CHAVE CONECTADA' : 'CONFIGURAR CHAVE API'}
+            </span>
+          </button>
+          {!hasPersonalKey && (
+            <span className="text-[8px] font-mono text-brand-primary/60 uppercase tracking-widest mr-2">
+              Requer Projeto Pago (Paid Project)
+            </span>
+          )}
         </div>
       </header>
 
@@ -276,13 +378,30 @@ const App: React.FC = () => {
           </section>
 
           <div className="sticky bottom-6 lg:bottom-10 z-20">
+            <div className="space-y-4 mb-6">
+              <div className="flex items-center justify-between p-4 bg-white/5 border border-white/10 rounded-xl group hover:border-brand-primary/30 transition-all cursor-pointer" onClick={() => setIsPremiumMode(!isPremiumMode)}>
+                <div className="flex flex-col gap-1">
+                  <span className="text-[10px] font-black text-white uppercase tracking-widest flex items-center gap-2">
+                    {isPremiumMode ? <Zap size={12} className="text-brand-primary fill-current" /> : <SparklesIcon className="w-3 h-3" />}
+                    {isPremiumMode ? 'MODO PREMIUM (4K)' : 'MODO GRATUITO (SD)'}
+                  </span>
+                  <span className="text-[8px] text-gray-500 font-bold uppercase tracking-tighter">
+                    {isPremiumMode ? 'EXIGE PROJETO PAGO NO GOOGLE' : 'QUALIDADE BÁSICA - TESTE RÁPIDO'}
+                  </span>
+                </div>
+                <div className={`w-10 h-5 rounded-full p-1 transition-colors duration-300 ${isPremiumMode ? 'bg-brand-primary' : 'bg-white/10'}`}>
+                  <div className={`w-3 h-3 bg-white rounded-full transition-transform duration-300 ${isPremiumMode ? 'translate-x-5' : 'translate-x-0'}`} />
+                </div>
+              </div>
+            </div>
+
             <Button 
               onClick={handleGenerate} 
               fullWidth 
               variant="jewel"
               disabled={!originalImage || isGenerating}
               isLoading={isGenerating}
-              className="shadow-[0_0_40px_rgba(255,0,255,0.3)] h-16 lg:h-20 text-[12px] lg:text-[13px] border-2 border-white/20"
+              className={`h-16 lg:h-20 text-[12px] lg:text-[13px] border-2 border-white/20 transition-all duration-500 ${isPremiumMode ? 'shadow-[0_0_40px_rgba(255,0,255,0.3)]' : 'shadow-none'}`}
             >
               {!isGenerating && <><SparklesIcon /> RENDERIZAR CRIATIVO MESTRE</>}
             </Button>

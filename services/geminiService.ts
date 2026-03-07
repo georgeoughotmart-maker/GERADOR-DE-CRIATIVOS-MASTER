@@ -49,13 +49,14 @@ const resizeImage = (base64Str: string, maxWidth = 512, maxHeight = 512): Promis
 };
 
 const getApiKey = () => {
+  // Prioritize the process.env.API_KEY which is injected when the user selects a key in the dialog
   const userKey = process.env.API_KEY;
   const fallbackKey = process.env.GEMINI_API_KEY;
   
   if (userKey) return userKey;
   if (fallbackKey) return fallbackKey;
   
-  throw new Error("Sistema de autenticação em manutenção. Por favor, tente novamente em alguns instantes.");
+  return ""; // Return empty and let the SDK handle it or throw later
 };
 
 export const isQuotaError = (error: any): boolean => {
@@ -149,9 +150,10 @@ export const generateAdCreative = async (
   logoBase64?: string,
   logoPosition: LogoPosition = LogoPosition.TOP_RIGHT,
   params?: AdParameters,
-  onStatusUpdate?: (status: string) => void
+  onStatusUpdate?: (status: string) => void,
+  isPremium: boolean = false
 ): Promise<string> => {
-  const modelName = 'gemini-2.5-flash-image';
+  const modelName = isPremium ? 'gemini-3.1-flash-image-preview' : 'gemini-2.5-flash-image';
   
   onStatusUpdate?.('OTIMIZANDO RECURSOS VISUAIS...');
   const optimizedProduct = await resizeImage(productBase64);
@@ -203,6 +205,11 @@ export const generateAdCreative = async (
           aspectRatio: "1:1"
         }
       }
+    }).catch(e => {
+      // If the error is an object with a message, throw that. 
+      // If it's the raw JSON error the user is seeing, stringify it so our UI can catch keywords.
+      if (e.message) throw e;
+      throw new Error(JSON.stringify(e));
     });
 
     const candidate = response.candidates?.[0];
