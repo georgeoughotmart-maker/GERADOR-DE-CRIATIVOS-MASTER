@@ -67,10 +67,11 @@ export enum AdStyle {
 }
 
 export enum LogoPosition {
-  TOP_LEFT = 'superior esquerdo',
-  TOP_RIGHT = 'superior direito',
-  BOTTOM_LEFT = 'inferior esquerdo',
-  BOTTOM_RIGHT = 'inferior direito'
+  TOP_LEFT = 'top left',
+  TOP_RIGHT = 'top right',
+  BOTTOM_LEFT = 'bottom left',
+  BOTTOM_RIGHT = 'bottom right',
+  CENTER = 'center'
 }
 
 export type Category = 'general' | 'food' | 'beauty';

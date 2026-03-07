@@ -49,11 +49,13 @@ const resizeImage = (base64Str: string, maxWidth = 512, maxHeight = 512): Promis
 };
 
 const getApiKey = () => {
-  const key = process.env.API_KEY || process.env.GEMINI_API_KEY;
-  if (!key) {
-    throw new Error("Chave de API não encontrada. Por favor, conecte sua chave no topo da tela.");
-  }
-  return key;
+  const userKey = process.env.API_KEY;
+  const fallbackKey = process.env.GEMINI_API_KEY;
+  
+  if (userKey) return userKey;
+  if (fallbackKey) return fallbackKey;
+  
+  throw new Error("Sistema de autenticação em manutenção. Por favor, tente novamente em alguns instantes.");
 };
 
 export const isQuotaError = (error: any): boolean => {
@@ -72,15 +74,16 @@ export const isQuotaError = (error: any): boolean => {
          errorMsg.includes('quota_exceeded');
 };
 
-const withRetry = async <T>(fn: () => Promise<T>, retries = 5, delay = 3000, initialRetries = 5): Promise<T> => {
+const withRetry = async <T>(fn: () => Promise<T>, retries = 3, delay = 2000, initialRetries = 3): Promise<T> => {
   try {
     return await fn();
   } catch (error: any) {
     if (isQuotaError(error) && retries > 0) {
-      const backoff = delay * Math.pow(1.5, initialRetries - retries);
-      const jitter = Math.random() * 2000;
+      const backoff = delay * Math.pow(2, initialRetries - retries);
+      const jitter = Math.random() * 1000;
       const waitTime = backoff + jitter;
       
+      console.warn(`[IA] Limite atingido. Tentando novamente em ${Math.round(waitTime/1000)}s... (${retries} tentativas restantes)`);
       await wait(waitTime);
       return withRetry(fn, retries - 1, delay, initialRetries);
     }
@@ -148,22 +151,31 @@ export const generateAdCreative = async (
   params?: AdParameters,
   onStatusUpdate?: (status: string) => void
 ): Promise<string> => {
-  const modelName = 'gemini-3.1-flash-image-preview';
+  const modelName = 'gemini-2.5-flash-image';
   
   onStatusUpdate?.('OTIMIZANDO RECURSOS VISUAIS...');
   const optimizedProduct = await resizeImage(productBase64);
   const optimizedLogo = logoBase64 ? await resizeImage(logoBase64, 512, 512) : null;
-
   const stylePrompt = getPromptForStyle(style);
-  const overlayTextPrompt = params?.overlayText ? `IMPORTANT: Render the text "${params.overlayText}" into the scene with high-end typography.` : "";
+
+  const overlayTextPrompt = params?.overlayText 
+    ? `MANDATORY: You MUST render the EXACT text "${params.overlayText}" in the image. 
+       - DO NOT change any letters.
+       - DO NOT add extra words.
+       - DO NOT add random symbols or gibberish text.
+       - Use clean, legible, professional advertising typography.
+       - The text must be perfectly spelled.` 
+    : "DO NOT add any text, words, letters, or symbols to the image.";
+  
   const finalPrompt = `
-    Advertising photography for a product.
-    PRODUCT DESCRIPTION: The product shown in the image.
-    STYLE: ${stylePrompt}
+    Professional high-end advertising photography.
+    PRODUCT: The main product from the provided image.
+    STYLE & ATMOSPHERE: ${stylePrompt}
     ${overlayTextPrompt}
-    ${customInstructions ? `INSTRUCTIONS: ${customInstructions}` : ""}
-    COMPOSITION: The product is the hero, centered, professional studio lighting, commercial grade.
-    ${logoBase64 ? `BRANDING: Place the logo at the ${logoPosition}.` : ""}
+    ${customInstructions ? `ADDITIONAL SPECS: ${customInstructions}` : ""}
+    COMPOSITION: The product is the central hero. Professional studio lighting. Commercial grade quality.
+    ${logoBase64 ? `BRANDING: Integrate the provided logo image at the ${logoPosition} of the composition.` : ""}
+    CRITICAL: Ensure the product remains recognizable and is the focus. No gibberish text.
   `;
 
   onStatusUpdate?.(`GERANDO CRIATIVO...`);
@@ -188,8 +200,7 @@ export const generateAdCreative = async (
       contents: { parts: parts },
       config: {
         imageConfig: {
-          aspectRatio: "1:1",
-          imageSize: "1K"
+          aspectRatio: "1:1"
         }
       }
     });

@@ -20,79 +20,37 @@ const App: React.FC = () => {
   const [activeCategory, setActiveCategory] = useState<Category>('general');
   const [originalImage, setOriginalImage] = useState<string | null>(null);
   const [logoImage, setLogoImage] = useState<string | null>(null);
-  const [logoPosition] = useState<LogoPosition>(LogoPosition.TOP_RIGHT);
+  const [logoPosition, setLogoPosition] = useState<LogoPosition>(LogoPosition.TOP_RIGHT);
   const [generatedImage, setGeneratedImage] = useState<string | null>(null);
   const [generatedCopy, setGeneratedCopy] = useState<AdCopy | null>(null);
   const [selectedStyle, setSelectedStyle] = useState<AdStyle>(AdStyle.CYBERPUNK);
   const [isGenerating, setIsGenerating] = useState(false);
   const [status, setStatus] = useState<string>('');
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<React.ReactNode | null>(null);
   const [customPrompt] = useState('');
   const [overlayText, setOverlayText] = useState('');
-  const [hasApiKey, setHasApiKey] = useState<boolean>(true);
+  // const [isUsingPersonalKey, setIsUsingPersonalKey] = useState<boolean>(false);
 
   const filteredStyles = useMemo(() => {
     return STYLES.filter(s => s.category === activeCategory);
   }, [activeCategory]);
 
   useEffect(() => {
-    // Verifica se a chave já está no ambiente
-    if (process.env.API_KEY) {
-      setHasApiKey(true);
-      console.log("[AI Studio] Chave de API detectada via ambiente.");
-    }
-
-    let attempts = 0;
-    const checkKey = async () => {
-      const aiStudio = (window as any).aistudio;
-      if (aiStudio) {
-        try {
-          const hasKey = await aiStudio.hasSelectedApiKey();
-          setHasApiKey(hasKey || !!process.env.API_KEY);
-          console.log("[AI Studio] Sistema de chaves pronto. Status:", hasKey);
-        } catch (e) {
-          console.error("[AI Studio] Erro ao verificar chave:", e);
-        }
-      } else if (attempts < 20) { // Aumentado para 20 tentativas (10 segundos)
-        attempts++;
-        setTimeout(checkKey, 500);
-      }
-    };
-    checkKey();
+    // Lógica de verificação de chave removida para simplificar a experiência do usuário
   }, []);
-
-  const handleOpenKeySelector = async () => {
-    console.log("[AI Studio] Tentando abrir seletor de chave...");
-    const aiStudio = (window as any).aistudio;
-    
-    try {
-      if (aiStudio && typeof aiStudio.openSelectKey === 'function') {
-        await aiStudio.openSelectKey();
-        // Após abrir, assumimos que o usuário pode ter selecionado
-        const hasKey = await aiStudio.hasSelectedApiKey();
-        setHasApiKey(hasKey || !!process.env.API_KEY);
-        setError(null);
-      } else {
-        console.warn("[AI Studio] window.aistudio não encontrado ou incompleto");
-        setError("O sistema de conexão da Google está demorando para carregar. Por favor, recarregue a página (F5) e aguarde 5 segundos.");
-      }
-    } catch (err) {
-      console.error("[AI Studio] Erro crítico ao abrir seletor:", err);
-      setError("Não foi possível iniciar a conexão. Tente recarregar a página.");
-    }
-  };
 
   const handleGenerate = async () => {
     if (!originalImage) return;
     
-    // Verificação de chave de API em tempo real
+    // Verificação de chave de API removida para permitir uso ilimitado via fallback
+    /*
     const aiStudio = (window as any).aistudio;
     if (aiStudio) {
       try {
         const hasKey = await aiStudio.hasSelectedApiKey();
         if (!hasKey && !process.env.API_KEY) {
           setError("Por favor, conecte sua chave de API no topo da tela para gerar criativos.");
-          setHasApiKey(false);
+          setIsUsingPersonalKey(false);
           return;
         }
       } catch (e) {
@@ -102,6 +60,7 @@ const App: React.FC = () => {
       setError("O sistema de chaves da Google ainda não carregou. Por favor, aguarde e tente novamente.");
       return;
     }
+    */
 
     setIsGenerating(true);
     setStatus('PREPARANDO AMBIENTE...');
@@ -159,11 +118,23 @@ const App: React.FC = () => {
       const errorMsg = err.message || "";
       
       if (errorMsg.includes("Requested entity was not found") || errorMsg.includes("API_KEY_INVALID") || errorMsg.includes("403")) {
-        setError("Sua chave de API parece inválida ou não tem permissão para este modelo. Conecte novamente.");
-        setHasApiKey(false);
+        setError(
+          <div className="space-y-4">
+            <p className="font-black text-brand-danger">❌ ERRO DE CONEXÃO</p>
+            <p className="text-sm text-gray-300 leading-relaxed">
+              Ocorreu um erro ao processar sua solicitação. O sistema tentará novamente de forma automática.
+            </p>
+          </div>
+        );
       } else if (errorMsg.includes("429") || errorMsg.includes("quota") || errorMsg.includes("RESOURCE_EXHAUSTED")) {
-        setError("⚠️ LIMITE DE COTA ATINGIDO: O sistema gratuito está sobrecarregado. Para gerar agora sem filas e com qualidade máxima, conecte sua própria chave (é rápido e grátis).");
-        setHasApiKey(false);
+        setError(
+          <div className="space-y-4">
+            <p className="font-black text-brand-primary">⚠️ ALTA DEMANDA</p>
+            <p className="text-sm text-gray-300 leading-relaxed">
+              O sistema está processando muitas requisições. Estamos na fila para gerar seu criativo.
+            </p>
+          </div>
+        );
       } else {
         setError(`ERRO NA GERAÇÃO: ${errorMsg || "Verifique sua conexão e tente novamente."}`);
       }
@@ -210,28 +181,7 @@ const App: React.FC = () => {
         </div>
 
         <div className="flex items-center gap-8">
-          {window.aistudio && (
-            <button 
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                handleOpenKeySelector();
-              }}
-              className={`px-6 py-2.5 rounded-full text-[10px] font-black tracking-widest transition-all duration-500 border flex items-center gap-3 active:scale-95 ${
-                hasApiKey 
-                ? 'bg-brand-success/10 text-brand-success border-brand-success/30 hover:bg-brand-success/20' 
-                : 'bg-brand-primary/20 text-brand-primary border-brand-primary/50 hover:bg-brand-primary/30 animate-pulse shadow-[0_0_20px_rgba(255,0,255,0.2)]'
-              }`}
-            >
-              <span className={`w-2 h-2 rounded-full ${hasApiKey ? 'bg-brand-success shadow-[0_0_10px_#00FF7F]' : 'bg-brand-primary shadow-[0_0_10px_#FF00FF] animate-ping'}`} />
-              {hasApiKey ? 'API CONECTADA' : 'CONECTAR API KEY'}
-            </button>
-          )}
-          <div className="flex items-center gap-6 font-mono text-[9px] tracking-[0.2em] text-gray-500">
-             <span className="flex items-center gap-3">STATUS <span className="w-2.5 h-2.5 bg-brand-success rounded-full animate-pulse shadow-[0_0_10px_#00FF7F]" /></span>
-             <span className="w-px h-6 bg-white/10" />
-             <span className="text-brand-info font-bold uppercase">Acesso Liberado</span>
-          </div>
+          {/* Botão de chave removido para simplificar a interface conforme solicitado */}
         </div>
       </header>
 
@@ -264,6 +214,33 @@ const App: React.FC = () => {
                     {logoImage && <button onClick={() => setLogoImage(null)} className="text-[10px] text-brand-danger font-black uppercase tracking-widest hover:brightness-150 transition-all underline underline-offset-4">Remover</button>}
                   </div>
                   <UploadZone onImageSelected={setLogoImage} currentImage={logoImage} variant="compact" />
+                  
+                  {logoImage && (
+                    <div className="space-y-3 pt-2">
+                      <label className="text-[9px] font-black text-gray-400 uppercase tracking-widest block">Posição da Logo</label>
+                      <div className="grid grid-cols-3 gap-2">
+                        {[
+                          { id: LogoPosition.TOP_LEFT, label: 'Sup. Esq.' },
+                          { id: LogoPosition.TOP_RIGHT, label: 'Sup. Dir.' },
+                          { id: LogoPosition.CENTER, label: 'Centro' },
+                          { id: LogoPosition.BOTTOM_LEFT, label: 'Inf. Esq.' },
+                          { id: LogoPosition.BOTTOM_RIGHT, label: 'Inf. Dir.' },
+                        ].map((pos) => (
+                          <button
+                            key={pos.id}
+                            onClick={() => setLogoPosition(pos.id)}
+                            className={`py-2 rounded text-[9px] font-black transition-all border ${
+                              logoPosition === pos.id 
+                                ? 'bg-brand-secondary/20 border-brand-secondary text-brand-secondary shadow-[0_0_10px_rgba(168,85,247,0.2)]' 
+                                : 'bg-white/5 border-white/10 text-gray-500 hover:border-white/20'
+                            }`}
+                          >
+                            {pos.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -356,33 +333,26 @@ const App: React.FC = () => {
               )}
 
               {error && (
-                <div className="absolute top-6 left-1/2 -translate-x-1/2 z-[210] bg-brand-danger/20 border border-brand-danger/50 backdrop-blur-xl px-6 py-4 rounded-xl animate-in slide-in-from-top duration-500 max-w-md w-full shadow-2xl pointer-events-auto">
-                  <div className="flex flex-col gap-4">
-                    <p className="text-[11px] font-black text-brand-danger uppercase tracking-[0.1em] flex items-start gap-3 leading-relaxed">
-                      <span className="w-2 h-2 bg-brand-danger rounded-full animate-pulse mt-1 flex-shrink-0" />
-                      {error}
-                    </p>
-                    {error.includes("COTA") ? (
+                <div className="absolute top-6 left-1/2 -translate-x-1/2 z-[210] bg-brand-dark/95 border border-white/10 backdrop-blur-3xl p-8 rounded-2xl animate-in slide-in-from-top duration-500 max-w-md w-full shadow-[0_0_50px_rgba(0,0,0,0.8)] pointer-events-auto ring-1 ring-white/20">
+                  <div className="flex flex-col gap-6">
+                    <div className="text-[11px] font-black text-white uppercase tracking-[0.1em] flex items-start gap-4 leading-relaxed">
+                      <span className="w-3 h-3 bg-brand-primary rounded-full animate-pulse mt-1 flex-shrink-0 shadow-[0_0_10px_#FF00FF]" />
+                      <div className="flex-1">
+                        {error}
+                      </div>
+                    </div>
+                    
+                    {/* Botão de fechar/tentar novamente genérico se não for o erro de cota (que já tem botões próprios) */}
+                    {typeof error === 'string' && (
                       <button 
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
-                          handleOpenKeySelector();
+                          setError(null);
                         }}
-                        className="w-full py-3 bg-brand-danger text-white text-[10px] font-black uppercase tracking-widest rounded-lg hover:brightness-110 active:scale-[0.98] transition-all shadow-lg shadow-brand-danger/20 cursor-pointer relative z-[220]"
+                        className="w-full py-4 bg-white/5 text-white text-[10px] font-black uppercase tracking-widest rounded-xl hover:bg-white/10 active:scale-[0.98] transition-all border border-white/10 cursor-pointer relative z-[220]"
                       >
-                        CONECTAR MINHA CHAVE AGORA (GRÁTIS)
-                      </button>
-                    ) : (
-                      <button 
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleGenerate();
-                        }}
-                        className="w-full py-3 bg-white/10 text-white text-[10px] font-black uppercase tracking-widest rounded-lg hover:bg-white/20 active:scale-[0.98] transition-all border border-white/10 cursor-pointer relative z-[220]"
-                      >
-                        TENTAR NOVAMENTE
+                        FECHAR AVISO
                       </button>
                     )}
                   </div>
