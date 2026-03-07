@@ -117,6 +117,13 @@ const App: React.FC = () => {
       console.error("Erro global na geração:", err);
       const errorMsg = err.message || "";
       
+      // Se for erro de cota, tentamos novamente automaticamente após um delay sem mostrar o erro "ALTA DEMANDA"
+      if (errorMsg.includes("429") || errorMsg.includes("quota") || errorMsg.includes("RESOURCE_EXHAUSTED")) {
+        setStatus('SISTEMA OCUPADO... REFILANDO...');
+        await new Promise(resolve => setTimeout(resolve, 5000));
+        return handleGenerate();
+      }
+
       if (errorMsg.includes("Requested entity was not found") || errorMsg.includes("API_KEY_INVALID") || errorMsg.includes("403")) {
         setError(
           <div className="space-y-4">
@@ -126,15 +133,8 @@ const App: React.FC = () => {
             </p>
           </div>
         );
-      } else if (errorMsg.includes("429") || errorMsg.includes("quota") || errorMsg.includes("RESOURCE_EXHAUSTED")) {
-        setError(
-          <div className="space-y-4">
-            <p className="font-black text-brand-primary">⚠️ ALTA DEMANDA</p>
-            <p className="text-sm text-gray-300 leading-relaxed">
-              O sistema está processando muitas requisições. Estamos na fila para gerar seu criativo.
-            </p>
-          </div>
-        );
+        // Tenta novamente após um tempo
+        setTimeout(() => handleGenerate(), 10000);
       } else {
         setError(`ERRO NA GERAÇÃO: ${errorMsg || "Verifique sua conexão e tente novamente."}`);
       }

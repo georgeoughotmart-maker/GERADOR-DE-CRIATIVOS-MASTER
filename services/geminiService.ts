@@ -74,12 +74,12 @@ export const isQuotaError = (error: any): boolean => {
          errorMsg.includes('quota_exceeded');
 };
 
-const withRetry = async <T>(fn: () => Promise<T>, retries = 3, delay = 2000, initialRetries = 3): Promise<T> => {
+const withRetry = async <T>(fn: () => Promise<T>, retries = 10, delay = 3000, initialRetries = 10): Promise<T> => {
   try {
     return await fn();
   } catch (error: any) {
     if (isQuotaError(error) && retries > 0) {
-      const backoff = delay * Math.pow(2, initialRetries - retries);
+      const backoff = delay * Math.pow(1.5, initialRetries - retries);
       const jitter = Math.random() * 1000;
       const waitTime = backoff + jitter;
       
