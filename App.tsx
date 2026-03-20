@@ -31,7 +31,6 @@ const App: React.FC = () => {
   const [customPrompt] = useState('');
   const [overlayText, setOverlayText] = useState('');
   const [hasPersonalKey, setHasPersonalKey] = useState<boolean>(false);
-  const [isPremiumMode, setIsPremiumMode] = useState(false);
 
   const filteredStyles = useMemo(() => {
     return STYLES.filter(s => s.category === activeCategory);
@@ -128,8 +127,7 @@ const App: React.FC = () => {
           logoImage || undefined, 
           logoPosition, 
           params,
-          (newStatus) => setStatus(newStatus),
-          isPremiumMode
+          (newStatus) => setStatus(newStatus)
         );
         setGeneratedImage(imageResult);
         setStatus('GERANDO COPY PUBLICITÁRIO...');
@@ -141,6 +139,30 @@ const App: React.FC = () => {
           setStatus('SISTEMA OCUPADO... REFILANDO...');
           await new Promise(resolve => setTimeout(resolve, 3000));
           return handleGenerate();
+        }
+        
+        if (errorMsg.toLowerCase().includes("permission denied") || errorMsg.toLowerCase().includes("permission_denied") || errorMsg.includes("403")) {
+          setError(
+            <div className="space-y-4 p-2">
+              <p className="font-black text-brand-primary text-lg">ERRO DE PERMISSÃO (403)</p>
+              <p className="text-gray-300 normal-case font-bold leading-relaxed">
+                A geração de imagens no Gemini (mesmo na versão básica) exige que sua chave API venha de um **Projeto com Faturamento Ativo** no Google Cloud.
+              </p>
+              <div className="bg-black/40 p-4 rounded-xl border border-white/10 space-y-3">
+                <p className="text-[11px] text-white font-black uppercase tracking-widest">Como resolver:</p>
+                <ul className="list-decimal list-inside text-[10px] text-gray-400 normal-case font-medium space-y-2">
+                  <li>Acesse o <a href="https://aistudio.google.com/app/apikey" target="_blank" className="text-brand-primary underline">Google AI Studio</a></li>
+                  <li>Certifique-se de que seu projeto tem um **Billing Account** vinculado</li>
+                  <li>Crie uma nova chave API e conecte-a no botão acima</li>
+                </ul>
+              </div>
+              <p className="text-gray-500 text-[10px] italic leading-tight">
+                Nota: Sem faturamento ativado, o Google bloqueia o acesso aos modelos de imagem (Imagen).
+              </p>
+            </div>
+          );
+          setIsGenerating(false);
+          return;
         }
         throw imgErr;
       }
@@ -378,32 +400,15 @@ const App: React.FC = () => {
           </section>
 
           <div className="sticky bottom-6 lg:bottom-10 z-20">
-            <div className="space-y-4 mb-6">
-              <div className="flex items-center justify-between p-4 bg-white/5 border border-white/10 rounded-xl group hover:border-brand-primary/30 transition-all cursor-pointer" onClick={() => setIsPremiumMode(!isPremiumMode)}>
-                <div className="flex flex-col gap-1">
-                  <span className="text-[10px] font-black text-white uppercase tracking-widest flex items-center gap-2">
-                    {isPremiumMode ? <Zap size={12} className="text-brand-primary fill-current" /> : <SparklesIcon className="w-3 h-3" />}
-                    {isPremiumMode ? 'MODO PREMIUM (4K)' : 'MODO GRATUITO (SD)'}
-                  </span>
-                  <span className="text-[8px] text-gray-500 font-bold uppercase tracking-tighter">
-                    {isPremiumMode ? 'EXIGE PROJETO PAGO NO GOOGLE' : 'QUALIDADE BÁSICA - TESTE RÁPIDO'}
-                  </span>
-                </div>
-                <div className={`w-10 h-5 rounded-full p-1 transition-colors duration-300 ${isPremiumMode ? 'bg-brand-primary' : 'bg-white/10'}`}>
-                  <div className={`w-3 h-3 bg-white rounded-full transition-transform duration-300 ${isPremiumMode ? 'translate-x-5' : 'translate-x-0'}`} />
-                </div>
-              </div>
-            </div>
-
             <Button 
               onClick={handleGenerate} 
               fullWidth 
               variant="jewel"
               disabled={!originalImage || isGenerating}
               isLoading={isGenerating}
-              className={`h-16 lg:h-20 text-[12px] lg:text-[13px] border-2 border-white/20 transition-all duration-500 ${isPremiumMode ? 'shadow-[0_0_40px_rgba(255,0,255,0.3)]' : 'shadow-none'}`}
+              className="h-16 lg:h-20 text-[12px] lg:text-[13px] border-2 border-white/20 shadow-[0_0_40px_rgba(255,0,255,0.2)]"
             >
-              {!isGenerating && <><SparklesIcon /> RENDERIZAR CRIATIVO MESTRE</>}
+              {!isGenerating && <><SparklesIcon /> RENDERIZAR CRIATIVO</>}
             </Button>
           </div>
         </aside>
@@ -416,7 +421,7 @@ const App: React.FC = () => {
                     <span className="w-2.5 h-2.5 rounded-full bg-brand-success shadow-[0_0_15px_#00FF7F]" />
                     <span className="text-[9px] lg:text-[10px] font-black text-gray-300 uppercase tracking-[0.2em]">SISTEMA_ATIVO</span>
                  </div>
-                 <span className="text-[9px] lg:text-[10px] font-black text-brand-info uppercase tracking-[0.2em]">SAÍDA_4K_ULTRA</span>
+                 <span className="text-[9px] lg:text-[10px] font-black text-brand-info uppercase tracking-[0.2em]">SAÍDA_ESTÁNDAR_HD</span>
               </div>
               {generatedImage && (
                 <div className="flex gap-4 lg:gap-10 w-full lg:w-auto justify-center">
@@ -510,7 +515,7 @@ const App: React.FC = () => {
            <div className="flex flex-col lg:flex-row items-center gap-6">
               <h4 className="font-display font-black text-xl tracking-tighter text-white">AD<span className="text-brand-primary">RENALINE</span></h4>
               <span className="hidden lg:block w-px h-6 bg-white/10" />
-              <span className="font-mono text-[10px] text-gray-600 tracking-[0.4em]">v5.3_PRO_OPEN // © 2025</span>
+              <span className="font-mono text-[10px] text-gray-600 tracking-[0.4em]">v5.3_STANDARD_OPEN // © 2025</span>
            </div>
         </div>
       </footer>

@@ -150,10 +150,9 @@ export const generateAdCreative = async (
   logoBase64?: string,
   logoPosition: LogoPosition = LogoPosition.TOP_RIGHT,
   params?: AdParameters,
-  onStatusUpdate?: (status: string) => void,
-  isPremium: boolean = false
+  onStatusUpdate?: (status: string) => void
 ): Promise<string> => {
-  const modelName = isPremium ? 'gemini-3.1-flash-image-preview' : 'gemini-2.5-flash-image';
+  const modelName = 'gemini-2.5-flash-image';
   
   onStatusUpdate?.('OTIMIZANDO RECURSOS VISUAIS...');
   const optimizedProduct = await resizeImage(productBase64);
