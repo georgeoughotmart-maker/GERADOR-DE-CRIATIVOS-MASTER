@@ -50,13 +50,15 @@ const resizeImage = (base64Str: string, maxWidth = 512, maxHeight = 512): Promis
 
 const getApiKey = () => {
   // Prioritize the process.env.API_KEY which is injected when the user selects a key in the dialog
-  const userKey = process.env.API_KEY;
-  const fallbackKey = process.env.GEMINI_API_KEY;
+  let userKey = "";
+  try {
+    userKey = (process.env as any).API_KEY || process.env.GEMINI_API_KEY || "";
+  } catch (e) {}
+
+  // Fallback for Vite/Vercel environments
+  const viteKey = (import.meta as any).env?.VITE_GEMINI_API_KEY;
   
-  if (userKey) return userKey;
-  if (fallbackKey) return fallbackKey;
-  
-  return ""; // Return empty and let the SDK handle it or throw later
+  return userKey || viteKey || "";
 };
 
 export const isQuotaError = (error: any): boolean => {

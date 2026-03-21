@@ -61,20 +61,25 @@ const App: React.FC = () => {
     
     // Check if we need a key for high demand
     const aiStudio = (window as any).aistudio;
+    let currentKey = "";
+    try {
+      currentKey = process.env.GEMINI_API_KEY || (import.meta as any).env?.VITE_GEMINI_API_KEY || "";
+    } catch (e) {}
+
     if (aiStudio) {
       try {
         const hasKey = await aiStudio.hasSelectedApiKey();
-        if (!hasKey && !process.env.GEMINI_API_KEY) {
+        if (!hasKey && !currentKey) {
            setError(
              <div className="space-y-4 p-4 bg-brand-primary/10 border border-brand-primary/30 rounded-2xl">
                <p className="font-black text-brand-primary flex items-center gap-2">
                  <Zap size={18} className="fill-current" />
-                 CHAVE DE API NECESSÁRIA (PROJETO PAGO)
+                 CHAVE DE API NECESSÁRIA
                </p>
                <p className="text-sm text-gray-300 leading-relaxed">
                  Para gerar imagens, o Google exige uma chave de um **Projeto com Faturamento Ativo** (Paid Project).
                  <br/><br/>
-                 Se você vir a mensagem "No Paid Project", você precisa configurar o faturamento no seu console do Google Cloud.
+                 Se você está no **Vercel**, certifique-se de que sua variável de ambiente se chama `VITE_GEMINI_API_KEY`.
                  <br/><br/>
                  <a 
                    href="https://ai.google.dev/gemini-api/docs/billing" 
@@ -103,6 +108,31 @@ const App: React.FC = () => {
       } catch (e) {
         console.warn("Erro na verificação de chave:", e);
       }
+    } else if (!currentKey) {
+      // No AI Studio (like on Vercel) and no key found
+      setError(
+        <div className="space-y-4 p-4 bg-brand-primary/10 border border-brand-primary/30 rounded-2xl">
+          <p className="font-black text-brand-primary flex items-center gap-2 text-lg">
+            <Zap size={22} className="fill-current" />
+            CHAVE API NÃO ENCONTRADA
+          </p>
+          <p className="text-sm text-gray-300 leading-relaxed font-medium">
+            O sistema não detectou uma chave API configurada. 
+            <br/><br/>
+            Como você está no **Vercel**, você deve:
+            <ol className="list-decimal list-inside mt-2 space-y-2 text-gray-400">
+              <li>Ir nas configurações do seu projeto no Vercel</li>
+              <li>Adicionar a variável: <code className="bg-black/40 px-1 rounded text-brand-primary">VITE_GEMINI_API_KEY</code></li>
+              <li>Fazer um novo deploy para aplicar as mudanças</li>
+            </ol>
+          </p>
+          <p className="text-[10px] text-gray-500 italic">
+            Nota: O prefixo "VITE_" é obrigatório para que a chave seja visível no navegador.
+          </p>
+        </div>
+      );
+      setIsGenerating(false);
+      return;
     }
 
     try {
