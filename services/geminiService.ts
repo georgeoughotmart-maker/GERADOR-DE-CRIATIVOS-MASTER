@@ -63,6 +63,9 @@ const getApiKey = () => {
 
 export const isQuotaError = (error: any): boolean => {
   const errorMsg = error?.message?.toLowerCase() || "";
+  // If limit is 0, it's not a temporary quota issue, it's a configuration/billing issue
+  if (errorMsg.includes("limit: 0")) return false;
+  
   return errorMsg.includes('429') || 
          errorMsg.includes('resource_exhausted') || 
          errorMsg.includes('quota') ||
@@ -163,7 +166,7 @@ export const generateAdCreative = async (
   params?: AdParameters,
   onStatusUpdate?: (status: string) => void
 ): Promise<string> => {
-  // Using 2.5-flash-image as it's faster for basic generations
+  // Reverting to the standard free model
   const modelName = 'gemini-2.5-flash-image';
   
   onStatusUpdate?.('OTIMIZANDO RECURSOS VISUAIS...');
@@ -191,7 +194,7 @@ export const generateAdCreative = async (
     CRITICAL: Ensure the product remains recognizable and is the focus. No gibberish text.
   `;
 
-  onStatusUpdate?.(`GERANDO CRIATIVO...`);
+  onStatusUpdate?.(`GERANDO CRIATIVO (MODO GRÁTIS)...`);
   
   return await withRetry(async () => {
     const apiKey = getApiKey();
@@ -210,11 +213,19 @@ export const generateAdCreative = async (
 
     const response = await ai.models.generateContent({
       model: modelName,
-      contents: { parts: parts }
+      contents: { parts: parts },
+      config: {
+        imageConfig: {
+          aspectRatio: "1:1"
+        }
+      }
     }).catch(e => {
       const errStr = e.message || JSON.stringify(e);
       if (errStr.includes("403") || errStr.toLowerCase().includes("permission denied")) {
-        throw new Error("ERRO_403: A geração de imagem requer faturamento ativo no Google Cloud.");
+        throw new Error("ERRO_403: O Google exige Billing ativo para gerar imagens, mesmo no plano grátis.");
+      }
+      if (errStr.includes("limit: 0")) {
+        throw new Error("ERRO_LIMITE_ZERO: Sua conta não tem permissão para gerar imagens grátis neste projeto.");
       }
       throw new Error(errStr);
     });
@@ -235,7 +246,7 @@ export const generateAdCreative = async (
     }
 
     throw new Error("O modelo não retornou uma imagem válida. Tente outro estilo.");
-  }, onStatusUpdate, 5); // Reduced retries for faster failure
+  }, onStatusUpdate, 5);
 };
 
 export const generateAdCopy = async (

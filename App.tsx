@@ -207,21 +207,23 @@ const App: React.FC = () => {
       const isPermissionError = errorMsg.includes("403") || 
                                 errorMsg.includes("PERMISSION_DENIED") || 
                                 errorMsg.includes("permission") ||
-                                errorMsg.includes("Paid Project");
+                                errorMsg.includes("Paid Project") ||
+                                errorMsg.includes("limit: 0") ||
+                                errorMsg.includes("ERRO_LIMITE_ZERO");
 
       if (isAuthError || isPermissionError) {
         setError(
           <div className="space-y-4 p-4 bg-brand-primary/10 border border-brand-primary/30 rounded-2xl">
             <p className="font-black text-brand-primary flex items-center gap-2">
               <Zap size={18} className="fill-current" />
-              {isPermissionError ? 'ERRO DE PERMISSÃO (PROJETO PAGO)' : 'ERRO DE AUTENTICAÇÃO'}
+              {isPermissionError ? 'FATURAMENTO NECESSÁRIO (BILLING)' : 'ERRO DE AUTENTICAÇÃO'}
             </p>
             <p className="text-sm text-gray-300 leading-relaxed">
               {isPermissionError ? (
                 <>
-                  O Google negou o acesso (403). Isso geralmente acontece porque o modelo de imagem exige um **Projeto com Faturamento Ativo** (Paid Project).
+                  O Google bloqueou o acesso (403/429). O erro <strong>"limit: 0"</strong> confirma que o modelo de imagem exige um <strong>Projeto com Faturamento Ativo</strong> (Paid Project).
                   <br/><br/>
-                  Mesmo na cota gratuita, o faturamento deve estar configurado no seu console.
+                  Mesmo para usar a cota gratuita, o Google exige que você vincule um cartão ou conta de faturamento ao seu projeto no Google Cloud.
                 </>
               ) : (
                 "Sua chave de API parece inválida ou expirou. Por favor, reconecte para continuar."
