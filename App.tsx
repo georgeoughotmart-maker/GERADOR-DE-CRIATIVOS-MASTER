@@ -147,10 +147,11 @@ const App: React.FC = () => {
         colorPalette: ''
       };
       
-      // Tentativa de geração de imagem
-      let imageResult = "";
-      try {
-        imageResult = await generateAdCreative(
+      setStatus('SINTETIZANDO CRIATIVO E COPY...');
+      
+      // Run both generations in parallel to save time
+      const [imageResult, copyResult] = await Promise.all([
+        generateAdCreative(
           originalImage, 
           selectedStyle, 
           customPrompt, 
@@ -158,52 +159,26 @@ const App: React.FC = () => {
           logoPosition, 
           params,
           (newStatus) => setStatus(newStatus)
-        );
-        setGeneratedImage(imageResult);
-        setStatus('GERANDO COPY PUBLICITÁRIO...');
-      } catch (imgErr: any) {
-        console.error("Erro na imagem:", imgErr);
-        const errorMsg = imgErr.message || "";
-        
-        if (errorMsg.includes("429") || errorMsg.includes("quota") || errorMsg.includes("RESOURCE_EXHAUSTED")) {
-          setStatus('SISTEMA OCUPADO... REFILANDO...');
-          await new Promise(resolve => setTimeout(resolve, 3000));
-          return handleGenerate();
-        }
-        
-        if (errorMsg.toLowerCase().includes("permission denied") || errorMsg.toLowerCase().includes("permission_denied") || errorMsg.includes("403")) {
-          setError(
-            <div className="space-y-4 p-2">
-              <p className="font-black text-brand-primary text-lg">ERRO DE PERMISSÃO (403)</p>
-              <p className="text-gray-300 normal-case font-bold leading-relaxed">
-                A geração de imagens no Gemini (mesmo na versão básica) exige que sua chave API venha de um **Projeto com Faturamento Ativo** no Google Cloud.
-              </p>
-              <div className="bg-black/40 p-4 rounded-xl border border-white/10 space-y-3">
-                <p className="text-[11px] text-white font-black uppercase tracking-widest">Como resolver:</p>
-                <ul className="list-decimal list-inside text-[10px] text-gray-400 normal-case font-medium space-y-2">
-                  <li>Acesse o <a href="https://aistudio.google.com/app/apikey" target="_blank" className="text-brand-primary underline">Google AI Studio</a></li>
-                  <li>Certifique-se de que seu projeto tem um **Billing Account** vinculado</li>
-                  <li>Crie uma nova chave API e conecte-a no botão acima</li>
-                </ul>
-              </div>
-              <p className="text-gray-500 text-[10px] italic leading-tight">
-                Nota: Sem faturamento ativado, o Google bloqueia o acesso aos modelos de imagem (Imagen).
-              </p>
-            </div>
-          );
-          setIsGenerating(false);
-          return;
-        }
-        throw imgErr;
-      }
+        ).catch(err => {
+          console.error("Erro na imagem:", err);
+          throw err;
+        }),
+        generateAdCopy(
+          originalImage, 
+          selectedStyle, 
+          customPrompt, 
+          (newStatus) => {
+            // Only update status if it's a retry message, otherwise keep the main status
+            if (newStatus.includes('REFILANDO')) setStatus(newStatus);
+          }
+        ).catch(err => {
+          console.error("Erro no copy:", err);
+          return null; // Don't fail the whole thing if copy fails
+        })
+      ]);
 
-      // Tentativa de geração de copy
-      try {
-        const copyResult = await generateAdCopy(originalImage, selectedStyle, customPrompt);
-        setGeneratedCopy(copyResult);
-      } catch (copyErr: any) {
-        console.error("Erro no copy:", copyErr);
-      }
+      if (imageResult) setGeneratedImage(imageResult);
+      if (copyResult) setGeneratedCopy(copyResult);
 
       setIsGenerating(false);
       setStatus('');

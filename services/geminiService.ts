@@ -77,7 +77,13 @@ export const isQuotaError = (error: any): boolean => {
          errorMsg.includes('quota_exceeded');
 };
 
-const withRetry = async <T>(fn: () => Promise<T>, retries = 10, delay = 3000, initialRetries = 10): Promise<T> => {
+const withRetry = async <T>(
+  fn: () => Promise<T>, 
+  onStatusUpdate?: (status: string) => void,
+  retries = 10, 
+  delay = 3000, 
+  initialRetries = 10
+): Promise<T> => {
   try {
     return await fn();
   } catch (error: any) {
@@ -86,9 +92,12 @@ const withRetry = async <T>(fn: () => Promise<T>, retries = 10, delay = 3000, in
       const jitter = Math.random() * 1000;
       const waitTime = backoff + jitter;
       
-      console.warn(`[IA] Limite atingido. Tentando novamente em ${Math.round(waitTime/1000)}s... (${retries} tentativas restantes)`);
+      const seconds = Math.round(waitTime/1000);
+      onStatusUpdate?.(`SISTEMA OCUPADO... REFILANDO EM ${seconds}S...`);
+      
+      console.warn(`[IA] Limite atingido. Tentando novamente em ${seconds}s... (${retries} tentativas restantes)`);
       await wait(waitTime);
-      return withRetry(fn, retries - 1, delay, initialRetries);
+      return withRetry(fn, onStatusUpdate, retries - 1, delay, initialRetries);
     }
     
     throw error;
@@ -154,6 +163,7 @@ export const generateAdCreative = async (
   params?: AdParameters,
   onStatusUpdate?: (status: string) => void
 ): Promise<string> => {
+  // Using 2.5-flash-image as it's faster for basic generations
   const modelName = 'gemini-2.5-flash-image';
   
   onStatusUpdate?.('OTIMIZANDO RECURSOS VISUAIS...');
@@ -200,17 +210,13 @@ export const generateAdCreative = async (
 
     const response = await ai.models.generateContent({
       model: modelName,
-      contents: { parts: parts },
-      config: {
-        imageConfig: {
-          aspectRatio: "1:1"
-        }
-      }
+      contents: { parts: parts }
     }).catch(e => {
-      // If the error is an object with a message, throw that. 
-      // If it's the raw JSON error the user is seeing, stringify it so our UI can catch keywords.
-      if (e.message) throw e;
-      throw new Error(JSON.stringify(e));
+      const errStr = e.message || JSON.stringify(e);
+      if (errStr.includes("403") || errStr.toLowerCase().includes("permission denied")) {
+        throw new Error("ERRO_403: A geração de imagem requer faturamento ativo no Google Cloud.");
+      }
+      throw new Error(errStr);
     });
 
     const candidate = response.candidates?.[0];
@@ -228,14 +234,15 @@ export const generateAdCreative = async (
       }
     }
 
-    throw new Error("Falha ao gerar imagem.");
-  });
+    throw new Error("O modelo não retornou uma imagem válida. Tente outro estilo.");
+  }, onStatusUpdate, 5); // Reduced retries for faster failure
 };
 
 export const generateAdCopy = async (
   imageBase64: string,
   style: AdStyle,
-  customInstructions?: string
+  customInstructions?: string,
+  onStatusUpdate?: (status: string) => void
 ): Promise<AdCopy> => {
   return withRetry(async () => {
     const apiKey = getApiKey();
@@ -271,5 +278,5 @@ export const generateAdCopy = async (
     } catch {
       return { titles: ["Inovação Pura"], descriptions: ["O futuro chegou."] };
     }
-  });
+  }, onStatusUpdate);
 };
