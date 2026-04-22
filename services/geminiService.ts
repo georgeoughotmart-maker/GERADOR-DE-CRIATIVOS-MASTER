@@ -166,8 +166,8 @@ export const generateAdCreative = async (
   params?: AdParameters,
   onStatusUpdate?: (status: string) => void
 ): Promise<string> => {
-  // Reverting to the standard free model
-  const modelName = 'gemini-2.5-flash-image';
+  // Using 3.1-flash-image-preview for HD/1K support
+  const modelName = 'gemini-3.1-flash-image-preview';
   
   onStatusUpdate?.('OTIMIZANDO RECURSOS VISUAIS...');
   const optimizedProduct = await resizeImage(productBase64);
@@ -194,7 +194,7 @@ export const generateAdCreative = async (
     CRITICAL: Ensure the product remains recognizable and is the focus. No gibberish text.
   `;
 
-  onStatusUpdate?.(`GERANDO CRIATIVO (MODO GRÁTIS)...`);
+  onStatusUpdate?.(`GERANDO CRIATIVO (HD 1K)...`);
   
   return await withRetry(async () => {
     const apiKey = getApiKey();
@@ -216,16 +216,17 @@ export const generateAdCreative = async (
       contents: { parts: parts },
       config: {
         imageConfig: {
-          aspectRatio: "1:1"
+          aspectRatio: "1:1",
+          imageSize: "1K"
         }
       }
     }).catch(e => {
       const errStr = e.message || JSON.stringify(e);
       if (errStr.includes("403") || errStr.toLowerCase().includes("permission denied")) {
-        throw new Error("ERRO_403: O Google exige Billing ativo para gerar imagens, mesmo no plano grátis.");
+        throw new Error("ERRO_403: O Google exige Billing ativo para gerar imagens HD, mesmo no plano grátis.");
       }
       if (errStr.includes("limit: 0")) {
-        throw new Error("ERRO_LIMITE_ZERO: Sua conta não tem permissão para gerar imagens grátis neste projeto.");
+        throw new Error("ERRO_LIMITE_ZERO: Sua conta não tem permissão para gerar imagens 1K grátis neste projeto.");
       }
       throw new Error(errStr);
     });
